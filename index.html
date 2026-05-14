@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Watchlist · Tu lista unificada</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+
+</head>
+<body>
+  <div id="config-error" class="config-error" hidden>
+    <strong>Falta configuración.</strong>
+    <span>Abre <code>config.js</code> y pega tus claves de Supabase y TMDB.</span>
+  </div>
+
+  <div class="user-bar" id="user-bar" hidden>
+    <span class="user-email" id="user-email"></span>
+    <button class="btn-logout" id="logout-btn">Salir</button>
+  </div>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <h1 class="brand"><span class="brand-mark">◐</span> <em>Watchlist</em></h1>
+      <p class="tagline">Tu lista unificada entre plataformas</p>
+    </div>
+  </header>
+
+  <section class="login-section" id="login-section" hidden>
+    <div class="login-card">
+      <p class="login-subtitle">Inicia sesión para acceder a tu lista</p>
+      <form class="login-form" id="login-form">
+        <div class="form-field">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" required autocomplete="email" placeholder="tu@email.com" />
+        </div>
+        <div class="form-field">
+          <label for="login-password">Contraseña</label>
+          <input id="login-password" type="password" required autocomplete="current-password" />
+        </div>
+        <p class="login-error" id="login-error" hidden></p>
+        <button type="submit" class="btn-primary login-submit" id="login-submit">Entrar</button>
+      </form>
+    </div>
+  </section>
+
+  <main id="app-main" hidden>
+    <section class="search-section">
+      <div class="search-bar">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" stroke-linecap="round" />
+        </svg>
+        <input
+          id="search-input"
+          type="search"
+          placeholder="Busca una película o serie…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <span class="search-status" id="search-status" aria-live="polite"></span>
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </section>
+
+    <section class="watchlist-section">
+      <div class="filters">
+        <div class="filter-row">
+          <div class="filter-group type-filters" role="tablist" aria-label="Tipo">
+            <button class="chip active" data-type="all">Todo</button>
+            <button class="chip" data-type="movie">Películas</button>
+            <button class="chip" data-type="tv">Series</button>
+          </div>
+          <div class="right-controls">
+            <div class="sort-control">
+              <label for="sort-select" class="sort-label">Ordenar</label>
+              <select id="sort-select" class="sort-select">
+                <option value="added_desc">Recientes</option>
+                <option value="year_desc">Año ↓</option>
+                <option value="year_asc">Año ↑</option>
+              </select>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="show-watched" />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Mostrar vistos</span>
+            </label>
+          </div>
+        </div>
+        <div class="filter-group platform-filters" id="platform-filters" aria-label="Plataforma"></div>
+        <div class="filter-group genre-filters" id="genre-filters" aria-label="Género" hidden></div>
+      </div>
+
+      <div class="list-meta">
+        <span class="list-count" id="list-count">0 títulos</span>
+      </div>
+
+      <div class="watchlist-grid" id="watchlist-grid"></div>
+      <p class="empty-state" id="empty-state" hidden>
+        Tu lista está vacía. Busca algo arriba para empezar.
+      </p>
+      <p class="loading-state" id="loading-state">Cargando tu lista…</p>
+    </section>
+  </main>
+
+  <dialog id="platform-dialog" class="dialog">
+    <form method="dialog" class="dialog-content">
+      <header class="dialog-header">
+        <h2>¿Dónde está disponible?</h2>
+        <button type="button" class="dialog-close" id="dialog-close" aria-label="Cerrar">×</button>
+      </header>
+      <div class="dialog-item-info" id="dialog-item-info"></div>
+      <div class="platform-checkboxes" id="platform-checkboxes"></div>
+      <footer class="dialog-actions">
+        <button type="button" class="btn-ghost" id="dialog-cancel">Cancelar</button>
+        <button type="button" class="btn-primary" id="dialog-save">Guardar</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
