@@ -1,6 +1,3 @@
-# Configuración local con claves de API
-config.js
-
 # Archivos del sistema operativo
 .DS_Store
 Thumbs.db
