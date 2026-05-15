@@ -125,6 +125,7 @@ const state = {
   genreFilters: new Set(),    // Set<string>
   showWatched: false,
   sortBy: 'added_desc',       // 'added_desc' | 'year_desc' | 'year_asc'
+  viewMode: 'grid',           // 'grid' | 'list'
   pendingItem: null,          // item del modal
 };
 
@@ -139,6 +140,7 @@ const els = {
   genreFilters:     $('genre-filters'),
   showWatched:      $('show-watched'),
   sortSelect:       $('sort-select'),
+  viewButtons:      document.querySelectorAll('.view-btn'),
   grid:             $('watchlist-grid'),
   emptyState:       $('empty-state'),
   loadingState:     $('loading-state'),
@@ -243,6 +245,9 @@ function renderList() {
   els.listCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'título' : 'títulos'}`;
   els.loadingState.hidden = true;
 
+  // Aplicar la clase de vista al contenedor
+  els.grid.classList.toggle('list-view', state.viewMode === 'list');
+
   if (filtered.length === 0) {
     els.grid.innerHTML = '';
     els.emptyState.hidden = false;
@@ -302,7 +307,7 @@ function itemCardHTML(item, i) {
         <div class="item-platforms">${platformTags}</div>
         <div class="item-actions">
           <button class="icon-btn watched-btn" title="${item.watched ? 'Marcar como no visto' : 'Marcar como visto'}">
-            ${item.watched ? '↺' : '✓'} ${item.watched ? 'No visto' : 'Visto'}
+            ${item.watched ? '↺' : '✓'} <span class="btn-label">${item.watched ? 'No visto' : 'Visto'}</span>
           </button>
           <button class="icon-btn edit-btn" title="Editar plataformas">✎</button>
           <button class="icon-btn delete-btn" title="Eliminar">✕</button>
@@ -597,6 +602,15 @@ function setupListeners() {
   els.sortSelect.addEventListener('change', e => {
     state.sortBy = e.target.value;
     renderList();
+  });
+
+  els.viewButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.viewMode = btn.dataset.view;
+      els.viewButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderList();
+    });
   });
 
   els.dialogSave.addEventListener('click',   saveDialog);

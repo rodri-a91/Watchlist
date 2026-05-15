@@ -364,6 +364,33 @@ main {
 .sort-select:hover { border-color: var(--border-strong); }
 .sort-select:focus { outline: none; border-color: var(--accent); }
 
+/* === View toggle (rejilla / lista) === */
+.view-toggle {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.view-btn {
+  background: transparent;
+  border: 0;
+  padding: 6px 9px;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.view-btn:hover { color: var(--text); }
+.view-btn.active {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
 /* === List === */
 .list-meta {
   display: flex;
@@ -523,6 +550,87 @@ main {
   font-family: 'Fraunces', serif;
   font-style: italic;
   font-size: 18px;
+}
+
+/* === Vista lista (compacta) === */
+.watchlist-grid.list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.watchlist-grid.list-view .item-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s;
+}
+.watchlist-grid.list-view .item-card:hover {
+  border-color: var(--border-strong);
+}
+
+.watchlist-grid.list-view .item-poster {
+  width: 44px;
+  height: 66px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  aspect-ratio: unset;
+}
+.watchlist-grid.list-view .item-type-badge,
+.watchlist-grid.list-view .watched-stamp { display: none; }
+
+.watchlist-grid.list-view .item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.watchlist-grid.list-view .item-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.watchlist-grid.list-view .item-year {
+  margin: 0;
+  flex-shrink: 0;
+}
+.watchlist-grid.list-view .item-genres {
+  margin: 0;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.watchlist-grid.list-view .item-platforms {
+  margin: 0;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+.watchlist-grid.list-view .item-actions {
+  margin: 0;
+  flex-shrink: 0;
+  width: auto;
+}
+.watchlist-grid.list-view .icon-btn {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+}
+.watchlist-grid.list-view .icon-btn .btn-label {
+  display: none;
 }
 
 /* === Dialog === */
@@ -804,4 +912,21 @@ main {
   .platform-checkboxes { grid-template-columns: 1fr; }
   .filter-row { flex-direction: column; align-items: stretch; }
   .toggle { justify-content: flex-start; }
+
+  /* En móvil, la vista lista apila la info bajo el póster */
+  .watchlist-grid.list-view .item-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .watchlist-grid.list-view .item-title {
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    line-height: 1.3;
+  }
+  .watchlist-grid.list-view .item-genres {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .watchlist-grid.list-view .item-platforms { flex-wrap: wrap; }
 }
