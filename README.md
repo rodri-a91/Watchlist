@@ -25,7 +25,7 @@ CREATE TABLE watchlist_items (
   poster_path text,
   year int NOT NULL,
   platforms text[] NOT NULL DEFAULT '{}'
-    CHECK (platforms <@ ARRAY['netflix','hbo','disney','apple','skyshowtime','prime','movistar','plex']::text[]),
+    CHECK (platforms <@ ARRAY['netflix','hbo','disney','apple','skyshowtime','prime','movistar','plex','filmin']::text[]),
   genres text[] NOT NULL DEFAULT '{}'
     CHECK (genres <@ ARRAY['Acción','Animación','Aventura','Bélica','Ciencia ficción','Comedia','Crimen','Documental','Drama','Familia','Fantasía','Historia','Misterio','Música','Romance','Suspense','Terror','Western']::text[]),
   season_number int,

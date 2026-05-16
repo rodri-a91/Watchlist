@@ -14,6 +14,7 @@ const PLATFORMS = [
   { id: 'skyshowtime', name: 'SkyShowtime',  color: 'var(--p-skyshowtime)' },
   { id: 'prime',       name: 'Prime Video',  color: 'var(--p-prime)' },
   { id: 'movistar',    name: 'Movistar+',    color: 'var(--p-movistar)' },
+  { id: 'filmin',      name: 'Filmin',       color: 'var(--p-filmin)' },
   { id: 'plex',        name: 'Plex',         color: 'var(--p-plex)' },
 ];
 const PLATFORM_MAP = Object.fromEntries(PLATFORMS.map(p => [p.id, p]));
