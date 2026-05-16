@@ -117,6 +117,29 @@ function normalizeTMDBItem(r) {
   };
 }
 
+// Obtiene los detalles de una serie, incluyendo el array de temporadas
+async function fetchTVDetails(tmdbId) {
+  const url = `${TMDB_BASE}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Error consultando TMDB');
+  return res.json();
+}
+
+// Devuelve un array de temporadas válidas { number, year, episodeCount }
+// descartando especiales (season 0) y temporadas sin fecha de estreno
+function normalizeSeasons(tvDetails) {
+  if (!tvDetails?.seasons) return [];
+  return tvDetails.seasons
+    .filter(s => s.season_number > 0)
+    .filter(s => s.air_date)
+    .map(s => ({
+      number:       s.season_number,
+      year:         parseInt(s.air_date.slice(0, 4), 10),
+      episodeCount: s.episode_count,
+    }))
+    .sort((a, b) => a.number - b.number);
+}
+
 // ---- Estado de la UI ----
 const state = {
   items: [],
@@ -148,6 +171,8 @@ const els = {
   dialog:           $('platform-dialog'),
   dialogInfo:       $('dialog-item-info'),
   dialogChecks:     $('platform-checkboxes'),
+  dialogSeasonSection: $('season-section'),
+  dialogSeasonOptions: $('season-options'),
   dialogSave:       $('dialog-save'),
   dialogCancel:     $('dialog-cancel'),
   dialogClose:      $('dialog-close'),
@@ -294,6 +319,9 @@ function itemCardHTML(item, i) {
     : '';
 
   const escapedTitle = escapeHTML(item.title);
+  const seasonBadge = item.season_number
+    ? `<span class="season-badge">T${item.season_number}</span>`
+    : '';
 
   return `
     <div class="item-card ${item.watched ? 'watched' : ''}"
@@ -301,7 +329,7 @@ function itemCardHTML(item, i) {
          style="animation-delay: ${Math.min(i * 25, 400)}ms">
       ${poster}
       <div class="item-info">
-        <h3 class="item-title">${escapedTitle}</h3>
+        <h3 class="item-title">${escapedTitle}${seasonBadge}</h3>
         <div class="item-year">${item.year ?? '—'}</div>
         ${genreLine}
         <div class="item-platforms">${platformTags}</div>
@@ -345,28 +373,71 @@ function renderSearchResults(results) {
 }
 
 // ---- Modal: añadir / editar plataformas ----
-function openAddDialog(item) {
-  state.pendingItem = { mode: 'add', data: item, selected: new Set() };
-  fillDialog(item, new Set());
+async function openAddDialog(item) {
+  state.pendingItem = {
+    mode: 'add',
+    data: item,
+    selected: new Set(),
+    seasonNumber: null,  // null = "Toda la serie" (también el valor para películas)
+    seasonYear:   null,  // se rellenará si elige una temporada concreta
+  };
+  fillDialog(item, new Set(), null);
   els.dialog.showModal();
+
+  // Si es serie, traemos las temporadas
+  if (item.type === 'tv') {
+    showSeasonsLoading();
+    try {
+      const tvDetails = await fetchTVDetails(item.tmdb_id);
+      const seasons = normalizeSeasons(tvDetails);
+      renderSeasonOptions(seasons, null);
+    } catch (err) {
+      console.error(err);
+      els.dialogSeasonOptions.innerHTML = '<p style="color:var(--text-muted);font-style:italic;">No se pudo cargar la lista de temporadas. Se guardará como "toda la serie".</p>';
+    }
+  }
 }
 
-function openEditDialog(id) {
+async function openEditDialog(id) {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
-  state.pendingItem = { mode: 'edit', data: item, selected: new Set(item.platforms || []) };
-  fillDialog(item, new Set(item.platforms || []));
+  state.pendingItem = {
+    mode: 'edit',
+    data: item,
+    selected: new Set(item.platforms || []),
+    seasonNumber: item.season_number,
+    seasonYear:   item.year,
+  };
+  fillDialog(item, new Set(item.platforms || []), item.season_number);
   els.dialog.showModal();
+
+  if (item.type === 'tv') {
+    showSeasonsLoading();
+    try {
+      const tvDetails = await fetchTVDetails(item.tmdb_id);
+      const seasons = normalizeSeasons(tvDetails);
+      renderSeasonOptions(seasons, item.season_number);
+    } catch (err) {
+      console.error(err);
+      els.dialogSeasonOptions.innerHTML = '<p style="color:var(--text-muted);font-style:italic;">No se pudo cargar la lista de temporadas.</p>';
+    }
+  }
 }
 
-function fillDialog(item, selected) {
+function fillDialog(item, selected, seasonNumber) {
+  const subtitle = seasonNumber
+    ? `Serie · T${seasonNumber}`
+    : item.type === 'movie' ? 'Película' : 'Serie';
   els.dialogInfo.innerHTML = `
     <div class="mini-poster" style="background-image: url('${item.poster_path ? TMDB_IMG + item.poster_path : ''}')"></div>
     <div class="info-text">
       <p class="info-title">${escapeHTML(item.title)}</p>
-      <p class="info-meta">${item.type === 'movie' ? 'Película' : 'Serie'} · ${item.year ?? '—'}</p>
+      <p class="info-meta">${subtitle} · ${item.year ?? '—'}</p>
     </div>
   `;
+
+  els.dialogSeasonSection.hidden = item.type !== 'tv';
+
   els.dialogChecks.innerHTML = PLATFORMS.map(p => `
     <label class="platform-check ${selected.has(p.id) ? 'checked' : ''}"
            data-platform="${p.id}" style="--platform-color: ${p.color}">
@@ -388,6 +459,55 @@ function fillDialog(item, selected) {
   });
 }
 
+function showSeasonsLoading() {
+  els.dialogSeasonOptions.classList.add('loading');
+  els.dialogSeasonOptions.innerHTML = 'Cargando temporadas…';
+}
+
+function renderSeasonOptions(seasons, currentSeasonNumber) {
+  els.dialogSeasonOptions.classList.remove('loading');
+
+  // Opción "Toda la serie" + cada temporada
+  const showYear = state.pendingItem.data.year ?? '—';
+  const allShowChecked = currentSeasonNumber == null;
+
+  const rows = [
+    `<label class="season-option ${allShowChecked ? 'checked' : ''}" data-season="all">
+       <input type="radio" name="season" ${allShowChecked ? 'checked' : ''} />
+       <span class="option-radio"></span>
+       <span class="option-label">Toda la serie</span>
+       <span class="option-year">${showYear}</span>
+     </label>`,
+    ...seasons.map(s => {
+      const checked = s.number === currentSeasonNumber;
+      return `<label class="season-option ${checked ? 'checked' : ''}" data-season="${s.number}" data-year="${s.year}">
+        <input type="radio" name="season" ${checked ? 'checked' : ''} />
+        <span class="option-radio"></span>
+        <span class="option-label">Temporada ${s.number}</span>
+        <span class="option-year">${s.year}</span>
+      </label>`;
+    }),
+  ];
+  els.dialogSeasonOptions.innerHTML = rows.join('');
+
+  els.dialogSeasonOptions.querySelectorAll('.season-option').forEach(label => {
+    label.addEventListener('click', e => {
+      e.preventDefault();
+      const seasonAttr = label.dataset.season;
+      const isAll = seasonAttr === 'all';
+      state.pendingItem.seasonNumber = isAll ? null : parseInt(seasonAttr, 10);
+      state.pendingItem.seasonYear   = isAll ? state.pendingItem.data.year : parseInt(label.dataset.year, 10);
+
+      els.dialogSeasonOptions.querySelectorAll('.season-option').forEach(l => {
+        l.classList.remove('checked');
+        l.querySelector('input').checked = false;
+      });
+      label.classList.add('checked');
+      label.querySelector('input').checked = true;
+    });
+  });
+}
+
 function closeDialog() {
   els.dialog.close();
   state.pendingItem = null;
@@ -395,13 +515,22 @@ function closeDialog() {
 
 async function saveDialog() {
   if (!state.pendingItem) return;
-  const { mode, data, selected } = state.pendingItem;
+  const { mode, data, selected, seasonNumber, seasonYear } = state.pendingItem;
   const platforms = Array.from(selected);
 
   if (mode === 'add') {
-    await addItem({ ...data, platforms });
+    await addItem({
+      ...data,
+      platforms,
+      season_number: seasonNumber,
+      year: seasonYear ?? data.year,
+    });
   } else {
-    await updatePlatforms(data.id, platforms);
+    await updateItem(data.id, {
+      platforms,
+      season_number: seasonNumber,
+      year: seasonYear ?? data.year,
+    });
   }
   closeDialog();
 }
@@ -481,32 +610,37 @@ async function loadItems() {
 async function addItem(item) {
   if (!supabase) return alert('Configura primero config.js');
 
-  // Comprobación local antes de llamar al servidor
+  // Comprobación local antes de llamar al servidor (considera la temporada)
   const duplicate = state.items.find(
-    i => i.tmdb_id === item.tmdb_id && i.type === item.type
+    i => i.tmdb_id === item.tmdb_id
+      && i.type === item.type
+      && i.season_number === item.season_number
   );
   if (duplicate) {
-    alert(`"${item.title}" ya está en tu lista.`);
+    const label = item.season_number ? `${item.title} (T${item.season_number})` : item.title;
+    alert(`"${label}" ya está en tu lista.`);
     return;
   }
 
   const { data, error } = await supabase
     .from('watchlist_items')
     .insert({
-      tmdb_id:     item.tmdb_id,
-      type:        item.type,
-      title:       item.title,
-      poster_path: item.poster_path,
-      year:        item.year,
-      platforms:   item.platforms,
-      genres:      item.genres,
+      tmdb_id:       item.tmdb_id,
+      type:          item.type,
+      title:         item.title,
+      poster_path:   item.poster_path,
+      year:          item.year,
+      platforms:     item.platforms,
+      genres:        item.genres,
+      season_number: item.season_number ?? null,
     })
     .select()
     .single();
   if (error) {
     // 23505 = unique_violation en PostgreSQL (red de seguridad por si el chequeo local falla)
     if (error.code === '23505') {
-      alert(`"${item.title}" ya está en tu lista.`);
+      const label = item.season_number ? `${item.title} (T${item.season_number})` : item.title;
+      alert(`"${label}" ya está en tu lista.`);
     } else {
       alert('Error: ' + error.message);
     }
@@ -532,17 +666,29 @@ async function toggleWatched(id) {
   if (error) { item.watched = !newValue; renderList(); alert('Error: ' + error.message); }
 }
 
-async function updatePlatforms(id, platforms) {
+async function updateItem(id, updates) {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
-  const prev = item.platforms;
-  item.platforms = platforms;
+  // Guardar valores anteriores para revertir si falla
+  const prev = {};
+  for (const k of Object.keys(updates)) prev[k] = item[k];
+
+  Object.assign(item, updates);
   renderList();
+
   const { error } = await supabase
     .from('watchlist_items')
-    .update({ platforms })
+    .update(updates)
     .eq('id', id);
-  if (error) { item.platforms = prev; renderList(); alert('Error: ' + error.message); }
+  if (error) {
+    Object.assign(item, prev);
+    renderList();
+    if (error.code === '23505') {
+      alert('Ya tienes esa temporada en tu lista.');
+    } else {
+      alert('Error: ' + error.message);
+    }
+  }
 }
 
 async function deleteItem(id) {

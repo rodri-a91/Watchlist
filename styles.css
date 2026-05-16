@@ -454,6 +454,19 @@ main {
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
+.season-badge {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+}
 .watched-stamp {
   position: absolute;
   inset: 0;
@@ -713,6 +726,80 @@ main {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.dialog-section-title {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  font-weight: 500;
+}
+
+.season-section {
+  margin-bottom: 20px;
+}
+.season-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.season-options.loading {
+  align-items: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+}
+.season-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 13px;
+}
+.season-option:hover { border-color: var(--border-strong); }
+.season-option input { display: none; }
+.season-option .option-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--text-dim);
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.15s;
+}
+.season-option.checked .option-radio { border-color: var(--accent); }
+.season-option.checked .option-radio::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.season-option .option-label {
+  flex: 1;
+  font-weight: 500;
+}
+.season-option .option-year {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+.season-option.checked {
+  background: var(--surface-2);
+  border-color: var(--accent);
 }
 .platform-check {
   display: flex;

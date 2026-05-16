@@ -28,9 +28,11 @@ CREATE TABLE watchlist_items (
     CHECK (platforms <@ ARRAY['netflix','hbo','disney','apple','skyshowtime','prime','movistar','plex']::text[]),
   genres text[] NOT NULL DEFAULT '{}'
     CHECK (genres <@ ARRAY['Acción','Animación','Aventura','Bélica','Ciencia ficción','Comedia','Crimen','Documental','Drama','Familia','Fantasía','Historia','Misterio','Música','Romance','Suspense','Terror','Western']::text[]),
+  season_number int,
   watched boolean NOT NULL DEFAULT false,
   added_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tmdb_id, type)
+  CONSTRAINT watchlist_items_uniqueness UNIQUE NULLS NOT DISTINCT (tmdb_id, type, season_number),
+  CONSTRAINT season_only_for_tv CHECK (type = 'tv' OR season_number IS NULL)
 );
 
 ALTER TABLE watchlist_items ENABLE ROW LEVEL SECURITY;
