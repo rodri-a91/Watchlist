@@ -14,8 +14,8 @@ const PLATFORMS = [
   { id: 'skyshowtime', name: 'SkyShowtime',  color: 'var(--p-skyshowtime)' },
   { id: 'prime',       name: 'Prime Video',  color: 'var(--p-prime)' },
   { id: 'movistar',    name: 'Movistar+',    color: 'var(--p-movistar)' },
-  { id: 'filmin',      name: 'Filmin',       color: 'var(--p-filmin)' },
   { id: 'plex',        name: 'Plex',         color: 'var(--p-plex)' },
+  { id: 'filmin',      name: 'Filmin',       color: 'var(--p-filmin)' },
 ];
 const PLATFORM_MAP = Object.fromEntries(PLATFORMS.map(p => [p.id, p]));
 
@@ -124,6 +124,44 @@ async function fetchTVDetails(tmdbId) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Error consultando TMDB');
   return res.json();
+}
+
+// Obtiene los detalles de una película (para runtime)
+async function fetchMovieDetails(tmdbId) {
+  const url = `${TMDB_BASE}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Error consultando TMDB');
+  return res.json();
+}
+
+// Obtiene los detalles de una temporada concreta para calcular su duración media
+async function fetchSeasonDetails(tmdbId, seasonNumber) {
+  const url = `${TMDB_BASE}/tv/${tmdbId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=es-ES`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Error consultando TMDB');
+  return res.json();
+}
+
+// Calcula la duración media de los episodios de una temporada (en minutos)
+// Devuelve null si no hay datos válidos
+function averageEpisodeRuntime(seasonDetails) {
+  const runtimes = (seasonDetails.episodes || [])
+    .map(e => e.runtime)
+    .filter(r => typeof r === 'number' && r > 0);
+  if (runtimes.length === 0) return null;
+  const avg = runtimes.reduce((a, b) => a + b, 0) / runtimes.length;
+  return Math.round(avg);
+}
+
+// Formatea una duración en minutos a algo legible
+// movieMode=true: "2h 8min" para películas; false: "~45min" para capítulos
+function formatDuration(minutes, perEpisode) {
+  if (minutes == null) return '—';
+  if (perEpisode) return `~${minutes}min`;
+  if (minutes < 60) return `${minutes}min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}min`;
 }
 
 // Devuelve un array de temporadas válidas { number, year, episodeCount }
@@ -263,6 +301,15 @@ function renderList() {
     switch (state.sortBy) {
       case 'year_desc': return b.year - a.year;
       case 'year_asc':  return a.year - b.year;
+      case 'duration_desc':
+      case 'duration_asc': {
+        // Los items sin duración (null) siempre al final, sea ascendente o descendente
+        const da = a.duration_minutes, db = b.duration_minutes;
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return state.sortBy === 'duration_desc' ? db - da : da - db;
+      }
       case 'added_desc':
       default:          return new Date(b.added_at) - new Date(a.added_at);
     }
@@ -323,6 +370,13 @@ function itemCardHTML(item, i) {
   const seasonBadge = item.season_number
     ? `<span class="season-badge">T${item.season_number}</span>`
     : '';
+  const perEpisode = item.type === 'tv';
+  const durationStr = item.duration_minutes != null
+    ? formatDuration(item.duration_minutes, perEpisode)
+    : null;
+  const metaParts = [item.year ?? '—'];
+  if (durationStr) metaParts.push(durationStr);
+  const metaLine = metaParts.join(' · ');
 
   return `
     <div class="item-card ${item.watched ? 'watched' : ''}"
@@ -331,7 +385,7 @@ function itemCardHTML(item, i) {
       ${poster}
       <div class="item-info">
         <h3 class="item-title">${escapedTitle}${seasonBadge}</h3>
-        <div class="item-year">${item.year ?? '—'}</div>
+        <div class="item-year">${metaLine}</div>
         ${genreLine}
         <div class="item-platforms">${platformTags}</div>
         <div class="item-actions">
@@ -519,21 +573,64 @@ async function saveDialog() {
   const { mode, data, selected, seasonNumber, seasonYear } = state.pendingItem;
   const platforms = Array.from(selected);
 
-  if (mode === 'add') {
-    await addItem({
-      ...data,
-      platforms,
-      season_number: seasonNumber,
-      year: seasonYear ?? data.year,
-    });
-  } else {
-    await updateItem(data.id, {
-      platforms,
-      season_number: seasonNumber,
-      year: seasonYear ?? data.year,
-    });
+  // Bloquear el botón mientras hacemos las llamadas a TMDB
+  els.dialogSave.disabled = true;
+  els.dialogSave.textContent = 'Guardando…';
+
+  try {
+    // Resolver duración según el tipo y la temporada elegida
+    const duration = await resolveDuration(data, seasonNumber);
+
+    if (mode === 'add') {
+      await addItem({
+        ...data,
+        platforms,
+        season_number:    seasonNumber,
+        year:             seasonYear ?? data.year,
+        duration_minutes: duration,
+      });
+    } else {
+      await updateItem(data.id, {
+        platforms,
+        season_number:    seasonNumber,
+        year:             seasonYear ?? data.year,
+        duration_minutes: duration,
+      });
+    }
+    closeDialog();
+  } finally {
+    els.dialogSave.disabled = false;
+    els.dialogSave.textContent = 'Guardar';
   }
-  closeDialog();
+}
+
+// Resuelve la duración en minutos según el tipo y la temporada
+// Devuelve null si TMDB no tiene el dato
+async function resolveDuration(item, seasonNumber) {
+  try {
+    if (item.type === 'movie') {
+      const details = await fetchMovieDetails(item.tmdb_id);
+      return details.runtime || null;
+    }
+
+    // Serie: si hay temporada concreta, calculamos la media real de esa temporada
+    if (seasonNumber != null) {
+      const seasonDetails = await fetchSeasonDetails(item.tmdb_id, seasonNumber);
+      const avg = averageEpisodeRuntime(seasonDetails);
+      if (avg != null) return avg;
+    }
+
+    // Serie completa, o temporada sin episodios con runtime: media general de la serie
+    const tvDetails = await fetchTVDetails(item.tmdb_id);
+    const generalRuntime = tvDetails.episode_run_time;
+    if (Array.isArray(generalRuntime) && generalRuntime.length > 0) {
+      return generalRuntime[0];
+    }
+    return null;
+  } catch (err) {
+    console.error('Error obteniendo duración:', err);
+    return null;
+  }
 }
 
 // ---- Autenticación ----
@@ -626,14 +723,15 @@ async function addItem(item) {
   const { data, error } = await supabase
     .from('watchlist_items')
     .insert({
-      tmdb_id:       item.tmdb_id,
-      type:          item.type,
-      title:         item.title,
-      poster_path:   item.poster_path,
-      year:          item.year,
-      platforms:     item.platforms,
-      genres:        item.genres,
-      season_number: item.season_number ?? null,
+      tmdb_id:          item.tmdb_id,
+      type:             item.type,
+      title:            item.title,
+      poster_path:      item.poster_path,
+      year:             item.year,
+      platforms:        item.platforms,
+      genres:           item.genres,
+      season_number:    item.season_number ?? null,
+      duration_minutes: item.duration_minutes ?? null,
     })
     .select()
     .single();

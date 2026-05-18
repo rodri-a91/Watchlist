@@ -204,6 +204,7 @@ main {
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 .result-meta {
@@ -494,6 +495,7 @@ main {
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 .item-year {
@@ -613,6 +615,7 @@ main {
   margin: 0;
   font-size: 14px;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1010,6 +1013,7 @@ main {
   .watchlist-grid.list-view .item-title {
     white-space: normal;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     line-height: 1.3;
   }
   .watchlist-grid.list-view .item-genres {
