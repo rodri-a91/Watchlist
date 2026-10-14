@@ -976,7 +976,9 @@ main {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.item-card,
+/* Las tarjetas de la lista solo se animan en la carga inicial (.animate-in),
+   no en cada re-render por filtros o al marcar como visto */
+.watchlist-grid.animate-in .item-card,
 .result-card {
   animation: fadeIn 0.3s ease-out backwards;
 }

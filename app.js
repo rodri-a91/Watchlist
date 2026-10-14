@@ -2,7 +2,7 @@
 // Watchlist — lógica de la aplicación
 // ==========================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, TMDB_API_KEY } from './config.js';
 
 // ---- Configuración de plataformas ----
@@ -20,14 +20,8 @@ const PLATFORMS = [
 const PLATFORM_MAP = Object.fromEntries(PLATFORMS.map(p => [p.id, p]));
 
 // ---- Géneros ----
-// Lista canónica unificada. Cualquier género que se guarde en BBDD debe estar aquí.
-const GENRES = [
-  'Acción','Animación','Aventura','Bélica','Ciencia ficción','Comedia',
-  'Crimen','Documental','Drama','Familia','Fantasía','Historia',
-  'Misterio','Música','Romance','Suspense','Terror','Western',
-];
-
 // Mapeo de IDs de TMDB a nuestros géneros canónicos. Un ID puede mapearse a 1 o 2.
+// Cualquier género que se guarde en BBDD debe estar en el CHECK de la tabla (ver README).
 const TMDB_MOVIE_GENRES = {
   28:    ['Acción'],
   12:    ['Aventura'],
@@ -94,11 +88,15 @@ const supabase = CONFIG_OK ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : nul
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMG  = 'https://image.tmdb.org/t/p/w300';
 
-async function searchTMDB(query) {
-  const url = `${TMDB_BASE}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=es-ES&include_adult=false`;
-  const res = await fetch(url);
+async function tmdbGet(path, params = {}, signal) {
+  const qs = new URLSearchParams({ api_key: TMDB_API_KEY, language: 'es-ES', ...params });
+  const res = await fetch(`${TMDB_BASE}${path}?${qs}`, { signal });
   if (!res.ok) throw new Error('Error consultando TMDB');
-  const data = await res.json();
+  return res.json();
+}
+
+async function searchTMDB(query, signal) {
+  const data = await tmdbGet('/search/multi', { query, include_adult: 'false' }, signal);
   return data.results
     .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
     .filter(r => r.poster_path)                       // sin póster, fuera
@@ -118,28 +116,26 @@ function normalizeTMDBItem(r) {
   };
 }
 
-// Obtiene los detalles de una serie, incluyendo el array de temporadas
-async function fetchTVDetails(tmdbId) {
-  const url = `${TMDB_BASE}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Error consultando TMDB');
-  return res.json();
+// Obtiene los detalles de una serie, incluyendo el array de temporadas.
+// Se cachea la promesa para no repetir la llamada entre abrir el modal y guardar.
+const tvDetailsCache = new Map();
+function fetchTVDetails(tmdbId) {
+  if (!tvDetailsCache.has(tmdbId)) {
+    const p = tmdbGet(`/tv/${tmdbId}`);
+    p.catch(() => tvDetailsCache.delete(tmdbId)); // no cachear errores
+    tvDetailsCache.set(tmdbId, p);
+  }
+  return tvDetailsCache.get(tmdbId);
 }
 
 // Obtiene los detalles de una película (para runtime)
-async function fetchMovieDetails(tmdbId) {
-  const url = `${TMDB_BASE}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Error consultando TMDB');
-  return res.json();
+function fetchMovieDetails(tmdbId) {
+  return tmdbGet(`/movie/${tmdbId}`);
 }
 
 // Obtiene los detalles de una temporada concreta para calcular su duración media
-async function fetchSeasonDetails(tmdbId, seasonNumber) {
-  const url = `${TMDB_BASE}/tv/${tmdbId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=es-ES`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Error consultando TMDB');
-  return res.json();
+function fetchSeasonDetails(tmdbId, seasonNumber) {
+  return tmdbGet(`/tv/${tmdbId}/season/${seasonNumber}`);
 }
 
 // Calcula la duración media de los episodios de una temporada (en minutos)
@@ -154,7 +150,7 @@ function averageEpisodeRuntime(seasonDetails) {
 }
 
 // Formatea una duración en minutos a algo legible
-// movieMode=true: "2h 8min" para películas; false: "~45min" para capítulos
+// perEpisode=false: "2h 8min" para películas; true: "~45min" para capítulos
 function formatDuration(minutes, perEpisode) {
   if (minutes == null) return '—';
   if (perEpisode) return `~${minutes}min`;
@@ -234,19 +230,10 @@ function renderPlatformFilters() {
     <button class="chip platform-chip" data-platform="${p.id}"
             style="--platform-color: ${p.color}">${p.name}</button>
   `).join('');
-
-  els.platformFilters.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const id = chip.dataset.platform;
-      if (state.platformFilters.has(id)) state.platformFilters.delete(id);
-      else state.platformFilters.add(id);
-      chip.classList.toggle('active');
-      renderList();
-    });
-  });
 }
 
 // ---- Render: chips dinámicos de géneros (solo los presentes en la lista) ----
+// Solo depende de state.items, así que se llama cuando cambian los items (no en cada filtro)
 function renderGenreFilters() {
   const present = new Set();
   state.items.forEach(item => (item.genres || []).forEach(g => present.add(g)));
@@ -268,20 +255,17 @@ function renderGenreFilters() {
       ${escapeHTML(g)}
     </button>
   `).join('');
+}
 
-  els.genreFilters.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const g = chip.dataset.genre;
-      if (state.genreFilters.has(g)) state.genreFilters.delete(g);
-      else state.genreFilters.add(g);
-      chip.classList.toggle('active');
-      renderList();
-    });
-  });
+// Re-render completo tras cambiar state.items (carga, alta, borrado)
+function onItemsChanged(opts) {
+  renderGenreFilters();
+  renderList(opts);
 }
 
 // ---- Render: lista de watchlist ----
-function renderList() {
+// animate=true solo en la carga inicial, para no re-animar todas las tarjetas en cada clic
+function renderList({ animate = false } = {}) {
   const filtered = state.items.filter(item => {
     if (state.typeFilter !== 'all' && item.type !== state.typeFilter) return false;
     if (!state.showWatched && item.watched) return false;
@@ -311,7 +295,7 @@ function renderList() {
         return state.sortBy === 'duration_desc' ? db - da : da - db;
       }
       case 'added_desc':
-      default:          return new Date(b.added_at) - new Date(a.added_at);
+      default:          return (b.added_at || '').localeCompare(a.added_at || '');
     }
   });
 
@@ -320,6 +304,7 @@ function renderList() {
 
   // Aplicar la clase de vista al contenedor
   els.grid.classList.toggle('list-view', state.viewMode === 'list');
+  els.grid.classList.toggle('animate-in', animate);
 
   if (filtered.length === 0) {
     els.grid.innerHTML = '';
@@ -332,21 +317,11 @@ function renderList() {
   els.emptyState.hidden = true;
 
   els.grid.innerHTML = filtered.map((item, i) => itemCardHTML(item, i)).join('');
-
-  // listeners por tarjeta
-  els.grid.querySelectorAll('.item-card').forEach(card => {
-    const id = card.dataset.id;
-    card.querySelector('.watched-btn').addEventListener('click', () => toggleWatched(id));
-    card.querySelector('.delete-btn').addEventListener('click',  () => deleteItem(id));
-    card.querySelector('.edit-btn').addEventListener('click',    () => openEditDialog(id));
-  });
-
-  renderGenreFilters();
 }
 
 function itemCardHTML(item, i) {
   const poster = item.poster_path
-    ? `<div class="item-poster" style="background-image: url('${TMDB_IMG}${item.poster_path}')">
+    ? `<div class="item-poster" style="background-image: url('${posterURL(item.poster_path)}')">
          <span class="item-type-badge">${item.type === 'movie' ? 'Película' : 'Serie'}</span>
          <div class="watched-stamp">visto</div>
        </div>`
@@ -410,7 +385,7 @@ function renderSearchResults(results) {
     const item = normalizeTMDBItem(r);
     return `
       <button class="result-card" data-tmdb-id="${item.tmdb_id}" data-type="${item.type}">
-        <div class="result-poster" style="background-image: url('${TMDB_IMG}${item.poster_path}')"></div>
+        <div class="result-poster" style="background-image: url('${posterURL(item.poster_path)}')"></div>
         <div class="result-info">
           <h4 class="result-title">${escapeHTML(item.title)}</h4>
           <div class="result-meta">${item.type === 'movie' ? 'Peli' : 'Serie'} · ${item.year ?? '—'}</div>
@@ -428,54 +403,50 @@ function renderSearchResults(results) {
 }
 
 // ---- Modal: añadir / editar plataformas ----
-async function openAddDialog(item) {
-  state.pendingItem = {
+function openAddDialog(item) {
+  openDialog({
     mode: 'add',
     data: item,
     selected: new Set(),
     seasonNumber: null,  // null = "Toda la serie" (también el valor para películas)
     seasonYear:   null,  // se rellenará si elige una temporada concreta
-  };
-  fillDialog(item, new Set(), null);
-  els.dialog.showModal();
-
-  // Si es serie, traemos las temporadas
-  if (item.type === 'tv') {
-    showSeasonsLoading();
-    try {
-      const tvDetails = await fetchTVDetails(item.tmdb_id);
-      const seasons = normalizeSeasons(tvDetails);
-      renderSeasonOptions(seasons, null);
-    } catch (err) {
-      console.error(err);
-      els.dialogSeasonOptions.innerHTML = '<p style="color:var(--text-muted);font-style:italic;">No se pudo cargar la lista de temporadas. Se guardará como "toda la serie".</p>';
-    }
-  }
+  }, 'No se pudo cargar la lista de temporadas. Se guardará como "toda la serie".');
 }
 
-async function openEditDialog(id) {
+function openEditDialog(id) {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
-  state.pendingItem = {
+  openDialog({
     mode: 'edit',
     data: item,
     selected: new Set(item.platforms || []),
     seasonNumber: item.season_number,
     seasonYear:   item.year,
-  };
-  fillDialog(item, new Set(item.platforms || []), item.season_number);
+  }, 'No se pudo cargar la lista de temporadas.');
+}
+
+async function openDialog(pending, seasonsErrorMsg) {
+  const item = pending.data;
+  state.pendingItem = pending;
+  fillDialog(item, pending.selected, pending.seasonNumber);
   els.dialog.showModal();
 
-  if (item.type === 'tv') {
-    showSeasonsLoading();
-    try {
-      const tvDetails = await fetchTVDetails(item.tmdb_id);
-      const seasons = normalizeSeasons(tvDetails);
-      renderSeasonOptions(seasons, item.season_number);
-    } catch (err) {
-      console.error(err);
-      els.dialogSeasonOptions.innerHTML = '<p style="color:var(--text-muted);font-style:italic;">No se pudo cargar la lista de temporadas.</p>';
-    }
+  // Si es serie, traemos las temporadas
+  if (item.type !== 'tv') return;
+  showSeasonsLoading();
+  try {
+    const tvDetails = await fetchTVDetails(item.tmdb_id);
+    // El modal puede haberse cerrado (o abierto otro título) mientras esperábamos
+    if (state.pendingItem !== pending) return;
+    // En edición, item.year puede ser el de una temporada: el de la serie sale de TMDB
+    const firstAir = tvDetails.first_air_date;
+    pending.showYear = firstAir ? parseInt(firstAir.slice(0, 4), 10) : item.year;
+    renderSeasonOptions(normalizeSeasons(tvDetails), pending.seasonNumber);
+  } catch (err) {
+    console.error(err);
+    if (state.pendingItem !== pending) return;
+    els.dialogSeasonOptions.classList.remove('loading');
+    els.dialogSeasonOptions.innerHTML = `<p style="color:var(--text-muted);font-style:italic;">${seasonsErrorMsg}</p>`;
   }
 }
 
@@ -484,7 +455,7 @@ function fillDialog(item, selected, seasonNumber) {
     ? `Serie · T${seasonNumber}`
     : item.type === 'movie' ? 'Película' : 'Serie';
   els.dialogInfo.innerHTML = `
-    <div class="mini-poster" style="background-image: url('${item.poster_path ? TMDB_IMG + item.poster_path : ''}')"></div>
+    <div class="mini-poster" style="background-image: url('${item.poster_path ? posterURL(item.poster_path) : ''}')"></div>
     <div class="info-text">
       <p class="info-title">${escapeHTML(item.title)}</p>
       <p class="info-meta">${subtitle} · ${item.year ?? '—'}</p>
@@ -523,7 +494,7 @@ function renderSeasonOptions(seasons, currentSeasonNumber) {
   els.dialogSeasonOptions.classList.remove('loading');
 
   // Opción "Toda la serie" + cada temporada
-  const showYear = state.pendingItem.data.year ?? '—';
+  const showYear = state.pendingItem.showYear ?? '—';
   const allShowChecked = currentSeasonNumber == null;
 
   const rows = [
@@ -551,7 +522,7 @@ function renderSeasonOptions(seasons, currentSeasonNumber) {
       const seasonAttr = label.dataset.season;
       const isAll = seasonAttr === 'all';
       state.pendingItem.seasonNumber = isAll ? null : parseInt(seasonAttr, 10);
-      state.pendingItem.seasonYear   = isAll ? state.pendingItem.data.year : parseInt(label.dataset.year, 10);
+      state.pendingItem.seasonYear   = isAll ? state.pendingItem.showYear : parseInt(label.dataset.year, 10);
 
       els.dialogSeasonOptions.querySelectorAll('.season-option').forEach(l => {
         l.classList.remove('checked');
@@ -578,26 +549,26 @@ async function saveDialog() {
   els.dialogSave.textContent = 'Guardando…';
 
   try {
-    // Resolver duración según el tipo y la temporada elegida
-    const duration = await resolveDuration(data, seasonNumber);
+    // Resolver duración según el tipo y la temporada elegida.
+    // En edición, si la temporada no cambia, reutilizamos la duración guardada.
+    const keepDuration = mode === 'edit'
+      && seasonNumber === data.season_number
+      && data.duration_minutes != null;
+    const duration = keepDuration
+      ? data.duration_minutes
+      : await resolveDuration(data, seasonNumber);
 
-    if (mode === 'add') {
-      await addItem({
-        ...data,
-        platforms,
-        season_number:    seasonNumber,
-        year:             seasonYear ?? data.year,
-        duration_minutes: duration,
-      });
-    } else {
-      await updateItem(data.id, {
-        platforms,
-        season_number:    seasonNumber,
-        year:             seasonYear ?? data.year,
-        duration_minutes: duration,
-      });
-    }
-    closeDialog();
+    const fields = {
+      platforms,
+      season_number:    seasonNumber,
+      year:             seasonYear ?? data.year,
+      duration_minutes: duration,
+    };
+    const ok = mode === 'add'
+      ? await addItem({ ...data, ...fields })
+      : await updateItem(data.id, fields);
+    // Si falla (duplicado, error de red…), el modal sigue abierto con la selección
+    if (ok) closeDialog();
   } finally {
     els.dialogSave.disabled = false;
     els.dialogSave.textContent = 'Guardar';
@@ -634,27 +605,31 @@ async function resolveDuration(item, seasonNumber) {
 }
 
 // ---- Autenticación ----
-async function initAuth() {
-  // Listener para cambios de sesión (login, logout, expiración del token)
-  supabase.auth.onAuthStateChange((event, session) => {
-    if (session?.user) {
-      showApp(session.user);
-    } else {
-      showLogin();
-    }
-  });
+let currentUserId = null;
 
-  // Comprobación inicial: ¿hay sesión activa guardada en localStorage?
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.user) showApp(session.user);
-  else showLogin();
+function initAuth() {
+  // onAuthStateChange emite INITIAL_SESSION al suscribirse (sesión guardada en localStorage),
+  // así que no hace falta llamar a getSession(). TOKEN_REFRESHED llega cada ~1h con el
+  // mismo usuario: en ese caso no recargamos la lista.
+  supabase.auth.onAuthStateChange((_event, session) => {
+    const user = session?.user ?? null;
+    if ((user?.id ?? null) === currentUserId) return;
+    currentUserId = user?.id ?? null;
+    // Diferido: Supabase recomienda no lanzar consultas dentro del callback (puede bloquearse)
+    setTimeout(() => (user ? showApp(user) : showLogin()), 0);
+  });
 }
 
 function showLogin() {
   els.loginSection.hidden = false;
   els.appMain.hidden = true;
   els.userBar.hidden = true;
-  state.items = [];                    // limpiar la lista por si había otro usuario
+  // limpiar la lista (estado y DOM) por si había otro usuario
+  state.items = [];
+  els.grid.innerHTML = '';
+  els.genreFilters.innerHTML = '';
+  els.loadingState.hidden = false;
+  els.loadingState.textContent = 'Cargando tu lista…';
 }
 
 function showApp(user) {
@@ -700,13 +675,19 @@ async function loadItems() {
     .from('watchlist_items')
     .select('*')
     .order('added_at', { ascending: false });
-  if (error) { console.error(error); return; }
+  if (error) {
+    console.error(error);
+    els.loadingState.hidden = false;
+    els.loadingState.textContent = 'No se pudo cargar tu lista. Recarga la página para reintentarlo.';
+    return;
+  }
   state.items = data || [];
-  renderList();
+  onItemsChanged({ animate: true });
 }
 
+// Devuelve true si se ha guardado
 async function addItem(item) {
-  if (!supabase) return alert('Configura primero config.js');
+  if (!supabase) { alert('Configura primero config.js'); return false; }
 
   // Comprobación local antes de llamar al servidor (considera la temporada)
   const duplicate = state.items.find(
@@ -717,7 +698,7 @@ async function addItem(item) {
   if (duplicate) {
     const label = item.season_number ? `${item.title} (T${item.season_number})` : item.title;
     alert(`"${label}" ya está en tu lista.`);
-    return;
+    return false;
   }
 
   const { data, error } = await supabase
@@ -743,13 +724,14 @@ async function addItem(item) {
     } else {
       alert('Error: ' + error.message);
     }
-    return;
+    return false;
   }
   state.items.unshift(data);
-  renderList();
+  onItemsChanged();
   // limpiar búsqueda
   els.searchInput.value = '';
   els.searchResults.innerHTML = '';
+  return true;
 }
 
 async function toggleWatched(id) {
@@ -765,9 +747,10 @@ async function toggleWatched(id) {
   if (error) { item.watched = !newValue; renderList(); alert('Error: ' + error.message); }
 }
 
+// Devuelve true si se ha guardado
 async function updateItem(id, updates) {
   const item = state.items.find(i => i.id === id);
-  if (!item) return;
+  if (!item) return false;
   // Guardar valores anteriores para revertir si falla
   const prev = {};
   for (const k of Object.keys(updates)) prev[k] = item[k];
@@ -787,7 +770,9 @@ async function updateItem(id, updates) {
     } else {
       alert('Error: ' + error.message);
     }
+    return false;
   }
+  return true;
 }
 
 async function deleteItem(id) {
@@ -795,7 +780,7 @@ async function deleteItem(id) {
   if (!item) return;
   if (!confirm(`¿Eliminar "${item.title}" de la lista?`)) return;
   state.items = state.items.filter(i => i.id !== id);
-  renderList();
+  onItemsChanged();
   const { error } = await supabase
     .from('watchlist_items')
     .delete()
@@ -805,8 +790,11 @@ async function deleteItem(id) {
 
 // ---- Búsqueda con debounce ----
 let searchTimeout;
+let searchController = null;  // cancela la búsqueda anterior para que no pise a la nueva
 function onSearchInput() {
   clearTimeout(searchTimeout);
+  searchController?.abort();
+  searchController = null;
   const q = els.searchInput.value.trim();
   if (!q) {
     els.searchResults.innerHTML = '';
@@ -815,11 +803,14 @@ function onSearchInput() {
   }
   els.searchStatus.textContent = '…';
   searchTimeout = setTimeout(async () => {
+    const controller = searchController = new AbortController();
     try {
-      const results = await searchTMDB(q);
+      const results = await searchTMDB(q, controller.signal);
+      if (controller.signal.aborted) return;
       els.searchStatus.textContent = '';
       renderSearchResults(results);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error(err);
       els.searchStatus.textContent = 'error';
     }
@@ -832,11 +823,39 @@ function setupListeners() {
 
   els.typeFilters.forEach(btn => {
     btn.addEventListener('click', () => {
-      els.typeFilters.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      els.typeFilters.forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', String(b === btn));
+      });
       state.typeFilter = btn.dataset.type;
       renderList();
     });
+  });
+
+  // Delegación de eventos: un listener por contenedor en vez de uno por elemento en cada render
+  els.platformFilters.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    toggleInSet(state.platformFilters, chip.dataset.platform);
+    chip.classList.toggle('active');
+    renderList();
+  });
+
+  els.genreFilters.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    toggleInSet(state.genreFilters, chip.dataset.genre);
+    chip.classList.toggle('active');
+    renderList();
+  });
+
+  els.grid.addEventListener('click', e => {
+    const btn = e.target.closest('.icon-btn');
+    if (!btn) return;
+    const id = btn.closest('.item-card').dataset.id;
+    if (btn.classList.contains('watched-btn'))     toggleWatched(id);
+    else if (btn.classList.contains('edit-btn'))   openEditDialog(id);
+    else if (btn.classList.contains('delete-btn')) deleteItem(id);
   });
 
   els.showWatched.addEventListener('change', e => {
@@ -869,6 +888,15 @@ function setupListeners() {
 }
 
 // ---- Utilidades ----
+function toggleInSet(set, value) {
+  if (set.has(value)) set.delete(value);
+  else set.add(value);
+}
+
+function posterURL(posterPath) {
+  return escapeHTML(TMDB_IMG + posterPath);
+}
+
 function escapeHTML(str) {
   return String(str).replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
