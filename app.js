@@ -830,7 +830,9 @@ async function resolveDuration(item, seasonNumber) {
 }
 
 // ---- Autenticación ----
-let currentUserId = null;
+// undefined = aún no sabemos nada; null = sin sesión. Así el primer evento sin sesión
+// (INITIAL_SESSION con session=null) también muestra el login.
+let currentUserId = undefined;
 
 function initAuth() {
   // onAuthStateChange emite INITIAL_SESSION al suscribirse (sesión guardada en localStorage),
