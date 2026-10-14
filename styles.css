@@ -56,7 +56,7 @@ body {
 main {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 0 24px 80px;
+  padding: 0 24px calc(80px + env(safe-area-inset-bottom));
 }
 
 /* === Config error banner === */
@@ -77,8 +77,10 @@ main {
 }
 
 /* === Header === */
+/* env(safe-area-inset-*): en modo app del iPhone (status bar translúcida + viewport-fit=cover)
+   el contenido llega hasta la muesca y la barra inferior; esto lo aparta. Fuera de ese modo vale 0. */
 .site-header {
-  padding: 60px 24px 40px;
+  padding: calc(60px + env(safe-area-inset-top)) 24px 40px;
   text-align: center;
 }
 .header-inner { max-width: 1180px; margin: 0 auto; }
@@ -520,8 +522,6 @@ main {
   font-size: 11px;
   color: var(--text-muted);
 }
-.item-genres {
-  font-family: 'Fraunces', serif;
 /* Nota de TMDB: en rejilla, línea propia; en lista, a continuación con separador */
 .item-rating {
   display: block;
@@ -536,6 +536,8 @@ main {
   content: ' · ';
   color: var(--text-muted);
 }
+.item-genres {
+  font-family: 'Fraunces', serif;
   font-style: italic;
   font-size: 12px;
   color: var(--text-muted);
@@ -931,8 +933,8 @@ main {
 /* === User bar (logout) === */
 .user-bar {
   position: fixed;
-  top: 16px;
-  right: 24px;
+  top: calc(16px + env(safe-area-inset-top));
+  right: calc(24px + env(safe-area-inset-right));
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1159,11 +1161,14 @@ main {
 
 /* === Responsive === */
 @media (max-width: 640px) {
-  main { padding: 0 16px 60px; }
-  .site-header { padding: 36px 16px 28px; }
+  main {
+    padding: 0 max(16px, env(safe-area-inset-right)) calc(60px + env(safe-area-inset-bottom))
+             max(16px, env(safe-area-inset-left));
+  }
+  .site-header { padding: calc(36px + env(safe-area-inset-top)) 16px 28px; }
   .user-bar {
-    top: 10px;
-    right: 12px;
+    top: calc(10px + env(safe-area-inset-top));
+    right: calc(12px + env(safe-area-inset-right));
     gap: 8px;
   }
   .user-email { display: none; }
