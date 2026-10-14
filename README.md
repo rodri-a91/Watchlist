@@ -49,9 +49,6 @@ CREATE POLICY "own_items"
 ```
 
 Pulsa **Run**. Si todo ha ido bien, verás la tabla en **Table Editor**.
-
-> Si ya tenías la tabla creada con la versión anterior (sin `user_id`), no la recrees: ejecuta `migrations/001_user_id.sql`.
-
 ### 2. Crear tu usuario en Supabase
 
 1. En el menú izquierdo, ve a **Authentication → Users → Add user → Create new user**.
