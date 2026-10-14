@@ -31,6 +31,7 @@ CREATE TABLE watchlist_items (
     CHECK (genres <@ ARRAY['Acción','Animación','Aventura','Bélica','Ciencia ficción','Comedia','Crimen','Documental','Drama','Familia','Fantasía','Historia','Misterio','Música','Romance','Suspense','Terror','Western']::text[]),
   season_number int,
   duration_minutes int,
+  episode_count int,
   watched boolean NOT NULL DEFAULT false,
   added_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT watchlist_items_uniqueness UNIQUE NULLS NOT DISTINCT (user_id, tmdb_id, type, season_number),

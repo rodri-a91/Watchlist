@@ -812,6 +812,12 @@ main {
   flex: 1;
   font-weight: 500;
 }
+.season-option .option-eps {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
 .season-option .option-year {
   font-family: 'Geist Mono', monospace;
   font-size: 11px;
