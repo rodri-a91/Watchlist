@@ -849,6 +849,20 @@ main {
   border-color: var(--platform-color);
 }
 .platform-check.checked .dot { opacity: 1; }
+.platform-check .suggested-tag {
+  margin-left: auto;
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.providers-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+}
 
 .dialog-actions {
   display: flex;

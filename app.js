@@ -19,6 +19,21 @@ const PLATFORMS = [
 ];
 const PLATFORM_MAP = Object.fromEntries(PLATFORMS.map(p => [p.id, p]));
 
+// IDs de proveedor de TMDB (datos de JustWatch, región ES) -> nuestras plataformas.
+// Los "Amazon Channel" se ignoran: requieren una suscripción aparte dentro de Prime.
+const TMDB_PROVIDERS = {
+  8:    'netflix',     1796: 'netflix',   // Netflix, Netflix con anuncios
+  1899: 'hbo',
+  337:  'disney',
+  350:  'apple',
+  1773: 'skyshowtime',
+  119:  'prime',       2100: 'prime',     // Prime Video, Prime Video con anuncios
+  2241: 'movistar',    149:  'movistar',  // Movistar Plus+, Movistar Plus+ Ficción Total
+  538:  'plex',
+  63:   'filmin',      64:   'filmin',    // Filmin, Filmin Plus
+};
+const PROVIDER_REGION = 'ES';
+
 // ---- Géneros ----
 // Mapeo de IDs de TMDB a nuestros géneros canónicos. Un ID puede mapearse a 1 o 2.
 // Cualquier género que se guarde en BBDD debe estar en el CHECK de la tabla (ver README).
@@ -128,6 +143,17 @@ function fetchTVDetails(tmdbId) {
   return tvDetailsCache.get(tmdbId);
 }
 
+// Plataformas donde el título está incluido en la suscripción (o gratis / con anuncios)
+// en España. Alquiler y compra no cuentan. Devuelve un array de ids de PLATFORMS.
+async function fetchSuggestedPlatforms(type, tmdbId) {
+  const data = await tmdbGet(`/${type}/${tmdbId}/watch/providers`);
+  const region = data.results?.[PROVIDER_REGION];
+  if (!region) return [];
+  const offers = [...(region.flatrate || []), ...(region.ads || []), ...(region.free || [])];
+  const ids = new Set(offers.map(o => TMDB_PROVIDERS[o.provider_id]).filter(Boolean));
+  return PLATFORMS.map(p => p.id).filter(id => ids.has(id));  // en el orden de PLATFORMS
+}
+
 // Obtiene los detalles de una película (para runtime)
 function fetchMovieDetails(tmdbId) {
   return tmdbGet(`/movie/${tmdbId}`);
@@ -225,6 +251,7 @@ const els = {
   dialog:           $('platform-dialog'),
   dialogInfo:       $('dialog-item-info'),
   dialogChecks:     $('platform-checkboxes'),
+  providersNote:    $('providers-note'),
   dialogSeasonSection: $('season-section'),
   dialogSeasonOptions: $('season-options'),
   dialogSave:       $('dialog-save'),
@@ -460,8 +487,11 @@ function openEditDialog(id) {
 async function openDialog(pending, seasonsErrorMsg) {
   const item = pending.data;
   state.pendingItem = pending;
-  fillDialog(item, pending.selected, pending.seasonNumber);
+  fillDialog(item, pending.seasonNumber);
   els.dialog.showModal();
+
+  // En paralelo con las temporadas
+  loadPlatformSuggestions(pending);
 
   // Si es serie, traemos las temporadas
   if (item.type !== 'tv') return;
@@ -482,7 +512,43 @@ async function openDialog(pending, seasonsErrorMsg) {
   }
 }
 
-function fillDialog(item, selected, seasonNumber) {
+// Marca las plataformas donde TMDB/JustWatch dice que está el título.
+// Al añadir, las preselecciona (salvo que el usuario ya haya tocado alguna);
+// al editar, solo las señala para no pisar lo que ya tenía guardado.
+async function loadPlatformSuggestions(pending) {
+  let suggested;
+  try {
+    suggested = await fetchSuggestedPlatforms(pending.data.type, pending.data.tmdb_id);
+  } catch (err) {
+    console.error('Error obteniendo plataformas:', err);
+    return;
+  }
+  if (state.pendingItem !== pending || suggested.length === 0) return;
+  pending.suggested = new Set(suggested);
+  if (pending.mode === 'add' && !pending.touched) {
+    suggested.forEach(id => pending.selected.add(id));
+  }
+  renderPlatformChecks();
+  els.providersNote.textContent = pending.mode === 'add' && !pending.touched
+    ? 'Preseleccionadas según JustWatch. Revísalas antes de guardar.'
+    : 'Las marcadas como “disponible” lo están según JustWatch.';
+  els.providersNote.hidden = false;
+}
+
+function renderPlatformChecks() {
+  const { selected, suggested } = state.pendingItem;
+  els.dialogChecks.innerHTML = PLATFORMS.map(p => `
+    <label class="platform-check ${selected.has(p.id) ? 'checked' : ''}"
+           data-platform="${p.id}" style="--platform-color: ${p.color}">
+      <span class="dot"></span>
+      <input type="checkbox" ${selected.has(p.id) ? 'checked' : ''} />
+      <span>${p.name}</span>
+      ${suggested?.has(p.id) ? '<span class="suggested-tag">disponible</span>' : ''}
+    </label>
+  `).join('');
+}
+
+function fillDialog(item, seasonNumber) {
   const subtitle = seasonNumber
     ? `Serie · T${seasonNumber}`
     : item.type === 'movie' ? 'Película' : 'Serie';
@@ -496,25 +562,8 @@ function fillDialog(item, selected, seasonNumber) {
 
   els.dialogSeasonSection.hidden = item.type !== 'tv';
 
-  els.dialogChecks.innerHTML = PLATFORMS.map(p => `
-    <label class="platform-check ${selected.has(p.id) ? 'checked' : ''}"
-           data-platform="${p.id}" style="--platform-color: ${p.color}">
-      <span class="dot"></span>
-      <input type="checkbox" ${selected.has(p.id) ? 'checked' : ''} />
-      <span>${p.name}</span>
-    </label>
-  `).join('');
-
-  els.dialogChecks.querySelectorAll('.platform-check').forEach(label => {
-    label.addEventListener('click', e => {
-      e.preventDefault();
-      const id = label.dataset.platform;
-      if (state.pendingItem.selected.has(id)) state.pendingItem.selected.delete(id);
-      else state.pendingItem.selected.add(id);
-      label.classList.toggle('checked');
-      label.querySelector('input').checked = state.pendingItem.selected.has(id);
-    });
-  });
+  els.providersNote.hidden = true;
+  renderPlatformChecks();
 }
 
 function showSeasonsLoading() {
@@ -917,6 +966,18 @@ function setupListeners() {
       savePrefs();
       renderList();
     });
+  });
+
+  els.dialogChecks.addEventListener('click', e => {
+    const label = e.target.closest('.platform-check');
+    if (!label || !state.pendingItem) return;
+    e.preventDefault();
+    const pending = state.pendingItem;
+    pending.touched = true;  // a partir de aquí las sugerencias no cambian la selección
+    toggleInSet(pending.selected, label.dataset.platform);
+    const checked = pending.selected.has(label.dataset.platform);
+    label.classList.toggle('checked', checked);
+    label.querySelector('input').checked = checked;
   });
 
   els.dialogSave.addEventListener('click',   saveDialog);
