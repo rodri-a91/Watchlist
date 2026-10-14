@@ -102,6 +102,7 @@ const supabase = CONFIG_OK ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : nul
 // ---- TMDB ----
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMG  = 'https://image.tmdb.org/t/p/w300';
+const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w780';
 
 async function tmdbGet(path, params = {}, signal) {
   const qs = new URLSearchParams({ api_key: TMDB_API_KEY, language: 'es-ES', ...params });
@@ -152,6 +153,21 @@ async function fetchSuggestedPlatforms(type, tmdbId) {
   const offers = [...(region.flatrate || []), ...(region.ads || []), ...(region.free || [])];
   const ids = new Set(offers.map(o => TMDB_PROVIDERS[o.provider_id]).filter(Boolean));
   return PLATFORMS.map(p => p.id).filter(id => ids.has(id));  // en el orden de PLATFORMS
+}
+
+// Detalles completos para la ficha: sinopsis, reparto, tráiler… (cacheado por título)
+const fullDetailsCache = new Map();
+function fetchFullDetails(type, tmdbId) {
+  const key = `${type}:${tmdbId}`;
+  if (!fullDetailsCache.has(key)) {
+    const p = tmdbGet(`/${type}/${tmdbId}`, {
+      append_to_response:     'credits,videos',
+      include_video_language: 'es,en',
+    });
+    p.catch(() => fullDetailsCache.delete(key));
+    fullDetailsCache.set(key, p);
+  }
+  return fullDetailsCache.get(key);
 }
 
 // Obtiene los detalles de una película (para runtime)
@@ -252,6 +268,9 @@ const els = {
   dialogInfo:       $('dialog-item-info'),
   dialogChecks:     $('platform-checkboxes'),
   providersNote:    $('providers-note'),
+  detailDialog:     $('detail-dialog'),
+  detailBody:       $('detail-body'),
+  detailClose:      $('detail-close'),
   dialogSeasonSection: $('season-section'),
   dialogSeasonOptions: $('season-options'),
   dialogSave:       $('dialog-save'),
@@ -366,12 +385,14 @@ function renderList({ animate = false } = {}) {
 }
 
 function itemCardHTML(item, i) {
+  // El póster abre la ficha de detalle (también con teclado)
+  const openAttrs = `role="button" tabindex="0" aria-label="Ver ficha de ${escapeHTML(item.title)}"`;
   const poster = item.poster_path
-    ? `<div class="item-poster" style="background-image: url('${posterURL(item.poster_path)}')">
+    ? `<div class="item-poster item-open" ${openAttrs} style="background-image: url('${posterURL(item.poster_path)}')">
          <span class="item-type-badge">${item.type === 'movie' ? 'Película' : 'Serie'}</span>
          <div class="watched-stamp">visto</div>
        </div>`
-    : `<div class="item-poster no-image">
+    : `<div class="item-poster item-open no-image" ${openAttrs}>
          <span class="item-type-badge">${item.type === 'movie' ? 'Película' : 'Serie'}</span>
          <em>?</em>
          <div class="watched-stamp">visto</div>
@@ -405,7 +426,7 @@ function itemCardHTML(item, i) {
          style="animation-delay: ${Math.min(i * 25, 400)}ms">
       ${poster}
       <div class="item-info">
-        <h3 class="item-title">${escapedTitle}${seasonBadge}</h3>
+        <h3 class="item-title item-open">${escapedTitle}${seasonBadge}</h3>
         <div class="item-year">${metaLine}</div>
         ${genreLine}
         <div class="item-platforms">${platformTags}</div>
@@ -459,6 +480,121 @@ function inListLabel(item) {
   if (entries.some(i => i.season_number == null)) return 'En tu lista';
   const seasons = entries.map(i => i.season_number).sort((a, b) => a - b);
   return `${seasons.map(n => `T${n}`).join(' · ')} en tu lista`;
+}
+
+// ---- Ficha de detalle ----
+let detailItemId = null;  // título abierto en la ficha (para descartar respuestas tardías)
+
+async function openDetailDialog(id) {
+  const item = state.items.find(i => i.id === id);
+  if (!item) return;
+  detailItemId = id;
+
+  // Primero lo que ya tenemos en local; sinopsis, reparto, etc. llegan después
+  els.detailBody.innerHTML = detailHeaderHTML(item) + `
+    <div id="detail-extra"><p class="detail-loading">Cargando ficha…</p></div>
+    <div class="detail-actions" id="detail-actions"></div>`;
+  renderDetailActions(id);
+  if (!els.detailDialog.open) els.detailDialog.showModal();
+
+  try {
+    const [details, season] = await Promise.all([
+      fetchFullDetails(item.type, item.tmdb_id),
+      item.season_number != null
+        ? fetchSeasonDetails(item.tmdb_id, item.season_number).catch(() => null)
+        : null,
+    ]);
+    if (detailItemId !== id) return;  // se cerró o se abrió otro título
+    if (details.backdrop_path) {
+      els.detailBody.querySelector('.detail-hero').style.backgroundImage =
+        `url('${escapeHTML(TMDB_BACKDROP + details.backdrop_path)}')`;
+    }
+    $('detail-extra').innerHTML = detailExtraHTML(item, details, season);
+    renderDetailActions(id, findTrailer(details));
+  } catch (err) {
+    console.error(err);
+    if (detailItemId !== id) return;
+    $('detail-extra').innerHTML = '<p class="detail-loading">No se pudo cargar la ficha de TMDB.</p>';
+  }
+}
+
+function detailHeaderHTML(item) {
+  const typeLabel = item.type === 'movie' ? 'Película' : 'Serie';
+  const meta = [typeLabel, item.year ?? '—'];
+  if (item.season_number) meta.push(`Temporada ${item.season_number}`);
+  if (item.duration_minutes != null) meta.push(formatDuration(item.duration_minutes, item.type === 'tv'));
+  const platforms = (item.platforms || []).map(pid => {
+    const p = PLATFORM_MAP[pid];
+    return p ? `<span class="platform-tag" style="--platform-color: ${p.color}">${p.name}</span>` : '';
+  }).join('');
+  return `
+    <div class="detail-hero">
+      <div class="detail-poster" style="background-image: url('${item.poster_path ? posterURL(item.poster_path) : ''}')"></div>
+      <div class="detail-heading">
+        <h2 class="detail-title">${escapeHTML(item.title)}</h2>
+        <p class="detail-meta">${meta.map(escapeHTML).join(' · ')}</p>
+        ${item.genres?.length ? `<p class="detail-genres">${item.genres.map(escapeHTML).join(' · ')}</p>` : ''}
+        ${platforms ? `<div class="item-platforms">${platforms}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function detailExtraHTML(item, details, season) {
+  const parts = [];
+
+  if (details.vote_count > 0) {
+    parts.push(`<p class="detail-rating"><span class="star">★</span> ${details.vote_average.toFixed(1)}
+      <span class="detail-votes">(${details.vote_count.toLocaleString('es-ES')} votos en TMDB)</span></p>`);
+  }
+  if (details.tagline) {
+    parts.push(`<p class="detail-tagline">${escapeHTML(details.tagline)}</p>`);
+  }
+
+  // Si es una temporada concreta y tiene sinopsis propia, se usa esa
+  const seasonOverview = season?.overview?.trim();
+  const overview = seasonOverview || details.overview?.trim();
+  parts.push(`
+    <h3 class="dialog-section-title">${seasonOverview ? `Sinopsis · Temporada ${item.season_number}` : 'Sinopsis'}</h3>
+    <p class="detail-overview">${overview ? escapeHTML(overview) : '<em>Sin sinopsis en español.</em>'}</p>`);
+
+  const people = item.type === 'movie'
+    ? { label: 'Dirección', names: (details.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name) }
+    : { label: 'Creación',  names: (details.created_by || []).map(c => c.name) };
+  if (people.names.length) {
+    parts.push(`<h3 class="dialog-section-title">${people.label}</h3>
+      <p class="detail-people">${people.names.map(escapeHTML).join(', ')}</p>`);
+  }
+
+  const cast = (details.credits?.cast || []).slice(0, 8);
+  if (cast.length) {
+    parts.push(`<h3 class="dialog-section-title">Reparto</h3>
+      <p class="detail-people">${cast.map(c => escapeHTML(c.name)).join(', ')}</p>`);
+  }
+  return parts.join('');
+}
+
+// Tráiler de YouTube: preferimos en español y oficial
+function findTrailer(details) {
+  const videos = (details.videos?.results || [])
+    .filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+  const score = v => (v.iso_639_1 === 'es' ? 4 : 0) + (v.type === 'Trailer' ? 2 : 0) + (v.official ? 1 : 0);
+  const best = videos.sort((a, b) => score(b) - score(a))[0];
+  return best ? `https://www.youtube.com/watch?v=${encodeURIComponent(best.key)}` : null;
+}
+
+// Botones de la ficha. Se re-renderizan al marcar como visto.
+function renderDetailActions(id, trailerURL) {
+  const box = $('detail-actions');
+  const item = state.items.find(i => i.id === id);
+  if (!box || !item || detailItemId !== id) return;
+  if (trailerURL !== undefined) box.dataset.trailer = trailerURL || '';
+  const trailer = box.dataset.trailer;
+  box.innerHTML = `
+    ${trailer ? `<a class="btn-ghost detail-trailer" href="${escapeHTML(trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a>` : ''}
+    <button type="button" class="btn-ghost" data-action="watched">
+      ${item.watched ? '↺ Marcar como no visto' : '✓ Marcar como visto'}
+    </button>
+    <button type="button" class="btn-primary" data-action="edit">Editar</button>`;
 }
 
 // ---- Modal: añadir / editar plataformas ----
@@ -939,12 +1075,41 @@ function setupListeners() {
   });
 
   els.grid.addEventListener('click', e => {
+    const card = e.target.closest('.item-card');
+    if (!card) return;
+    const id = card.dataset.id;
+    if (e.target.closest('.item-open')) return openDetailDialog(id);
     const btn = e.target.closest('.icon-btn');
     if (!btn) return;
-    const id = btn.closest('.item-card').dataset.id;
     if (btn.classList.contains('watched-btn'))     toggleWatched(id);
     else if (btn.classList.contains('edit-btn'))   openEditDialog(id);
     else if (btn.classList.contains('delete-btn')) deleteItem(id);
+  });
+  // El póster es role="button": que también responda a Enter/Espacio
+  els.grid.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const open = e.target.closest('[role="button"].item-open');
+    if (!open) return;
+    e.preventDefault();
+    openDetailDialog(open.closest('.item-card').dataset.id);
+  });
+
+  // Ficha de detalle
+  els.detailClose.addEventListener('click', () => els.detailDialog.close());
+  els.detailDialog.addEventListener('close', () => { detailItemId = null; });
+  els.detailDialog.addEventListener('click', e => {
+    // Clic en el fondo (fuera del contenido) cierra
+    if (e.target === els.detailDialog) return els.detailDialog.close();
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    const id = detailItemId;
+    if (!action || !id) return;
+    if (action === 'edit') {
+      els.detailDialog.close();
+      openEditDialog(id);
+    } else if (action === 'watched') {
+      toggleWatched(id).then(() => renderDetailActions(id));
+      renderDetailActions(id);  // cambio optimista, igual que en la tarjeta
+    }
   });
 
   els.showWatched.addEventListener('change', e => {

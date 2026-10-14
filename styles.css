@@ -1002,6 +1002,113 @@ main {
   cursor: not-allowed;
 }
 
+/* === Ficha de detalle === */
+.item-open { cursor: pointer; }
+.item-poster.item-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.detail-dialog { max-width: 640px; }
+.detail-content {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.detail-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  background: rgba(13, 12, 10, 0.6);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+/* El fondo (backdrop de TMDB) se pone desde JS cuando llega; el degradado lo funde con el panel */
+.detail-hero {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+  padding: 72px 24px 20px;
+  background-color: var(--surface);
+  background-size: cover;
+  background-position: center top;
+  position: relative;
+}
+.detail-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(20, 17, 15, 0.2), var(--bg-elevated) 92%);
+}
+.detail-hero > * { position: relative; }
+.detail-poster {
+  width: 110px;
+  aspect-ratio: 2 / 3;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--surface-2) center / cover;
+  box-shadow: var(--shadow);
+}
+.detail-heading { min-width: 0; }
+.detail-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 500;
+  font-size: 26px;
+  line-height: 1.15;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.detail-meta,
+.detail-genres {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+.detail-genres { text-transform: none; letter-spacing: 0; font-family: inherit; font-size: 12px; }
+#detail-extra { padding: 4px 24px 0; }
+#detail-extra .dialog-section-title { margin-top: 18px; }
+.detail-loading {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 13px;
+}
+.detail-rating { margin: 8px 0 0; font-size: 15px; font-weight: 500; }
+.detail-rating .star { color: var(--accent); }
+.detail-votes { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.detail-tagline {
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+  color: var(--text-muted);
+  margin: 10px 0 0;
+}
+.detail-overview,
+.detail-people {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.detail-people { color: var(--text-muted); font-size: 13px; }
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 24px;
+}
+.detail-trailer {
+  text-decoration: none;
+  margin-right: auto;
+  color: var(--accent);
+}
+
 /* === Animations === */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -1025,6 +1132,11 @@ main {
   }
   .user-email { display: none; }
   .login-card { padding: 32px 24px; }
+  .detail-hero { padding: 64px 16px 16px; gap: 14px; }
+  .detail-poster { width: 84px; }
+  .detail-title { font-size: 21px; }
+  #detail-extra { padding: 4px 16px 0; }
+  .detail-actions { padding: 20px 16px; }
   .watchlist-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 20px 12px;
