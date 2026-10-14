@@ -431,10 +431,6 @@ function itemCardHTML(item, i) {
     return `<span class="platform-tag" style="--platform-color: ${p.color}">${p.name}</span>`;
   }).join('');
 
-  const genreLine = (item.genres && item.genres.length)
-    ? `<div class="item-genres">${item.genres.map(escapeHTML).join(' · ')}</div>`
-    : '';
-
   const escapedTitle = escapeHTML(item.title);
   const seasonBadge = item.season_number
     ? `<span class="season-badge">T${item.season_number}</span>`
@@ -460,7 +456,6 @@ function itemCardHTML(item, i) {
       <div class="item-info">
         <h3 class="item-title item-open">${escapedTitle}${seasonBadge}</h3>
         <div class="item-year">${metaLine}</div>
-        ${genreLine}
         <div class="item-platforms">${platformTags}</div>
         <div class="item-actions">
           <button class="icon-btn watched-btn" title="${item.watched ? 'Marcar como no visto' : 'Marcar como visto'}">
