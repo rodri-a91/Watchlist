@@ -522,6 +522,20 @@ main {
 }
 .item-genres {
   font-family: 'Fraunces', serif;
+/* Nota de TMDB: en rejilla, línea propia; en lista, a continuación con separador */
+.item-rating {
+  display: block;
+  color: var(--accent);
+  margin-top: 2px;
+}
+.watchlist-grid.list-view .item-rating {
+  display: inline;
+  margin: 0;
+}
+.watchlist-grid.list-view .item-rating::before {
+  content: ' · ';
+  color: var(--text-muted);
+}
   font-style: italic;
   font-size: 12px;
   color: var(--text-muted);

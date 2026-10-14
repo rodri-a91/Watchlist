@@ -129,7 +129,13 @@ function normalizeTMDBItem(r) {
     poster_path:  r.poster_path,
     year:         date ? parseInt(date.slice(0, 4), 10) : null,
     genres:       mapTMDBGenres(r.genre_ids, r.media_type),
+    rating:       ratingFrom(r),
   };
+}
+
+// Nota media de TMDB con un decimal, o null si nadie ha votado
+function ratingFrom(r) {
+  return r?.vote_count > 0 ? Math.round(r.vote_average * 10) / 10 : null;
 }
 
 // Obtiene los detalles de una serie, incluyendo el array de temporadas.
@@ -171,8 +177,15 @@ function fetchFullDetails(type, tmdbId) {
 }
 
 // Obtiene los detalles de una película (para runtime)
+// Cacheado igual que las series: al guardar se usa para la duración y la nota
+const movieDetailsCache = new Map();
 function fetchMovieDetails(tmdbId) {
-  return tmdbGet(`/movie/${tmdbId}`);
+  if (!movieDetailsCache.has(tmdbId)) {
+    const p = tmdbGet(`/movie/${tmdbId}`);
+    p.catch(() => movieDetailsCache.delete(tmdbId));
+    movieDetailsCache.set(tmdbId, p);
+  }
+  return movieDetailsCache.get(tmdbId);
 }
 
 // Obtiene los detalles de una temporada concreta para calcular su duración media
@@ -239,7 +252,7 @@ const state = {
 // Vista, orden y "Mostrar vistos" se recuerdan entre visitas. localStorage puede
 // no estar disponible (modo privado, bloqueado…): en ese caso se usan los valores por defecto.
 const PREFS_KEY = 'watchlist:prefs';
-const SORT_OPTIONS = ['added_desc', 'year_desc', 'year_asc', 'duration_desc', 'duration_asc'];
+const SORT_OPTIONS = ['added_desc', 'year_desc', 'year_asc', 'duration_desc', 'duration_asc', 'rating_desc'];
 
 function loadPrefs() {
   let prefs = {};
@@ -365,6 +378,14 @@ function renderList({ animate = false } = {}) {
         if (db == null) return -1;
         return state.sortBy === 'duration_desc' ? db - da : da - db;
       }
+      case 'rating_desc': {
+        // Sin nota, al final
+        const ra = a.rating, rb = b.rating;
+        if (ra == null && rb == null) return 0;
+        if (ra == null) return 1;
+        if (rb == null) return -1;
+        return rb - ra;
+      }
       case 'added_desc':
       default:          return (b.added_at || '').localeCompare(a.added_at || '');
     }
@@ -425,7 +446,11 @@ function itemCardHTML(item, i) {
   const metaParts = [item.year ?? '—'];
   if (item.episode_count != null) metaParts.push(formatEpisodes(item.episode_count));
   if (durationStr) metaParts.push(durationStr);
-  const metaLine = metaParts.join(' · ');
+  // La nota va aparte: en rejilla ocupa su propia línea, en lista sigue en la misma (ver CSS)
+  const ratingHTML = item.rating != null
+    ? `<span class="item-rating">★ ${Number(item.rating).toFixed(1)}</span>`
+    : '';
+  const metaLine = metaParts.join(' · ') + ratingHTML;
 
   return `
     <div class="item-card ${item.watched ? 'watched' : ''}"
@@ -765,9 +790,10 @@ async function saveDialog() {
     const keepDuration = mode === 'edit'
       && seasonNumber === data.season_number
       && data.duration_minutes != null;
-    const [duration, episodeCount] = await Promise.all([
+    const [duration, episodeCount, rating] = await Promise.all([
       keepDuration ? data.duration_minutes : resolveDuration(data, seasonNumber),
       resolveEpisodeCount(data, seasonNumber),  // usa los detalles de la serie ya cacheados
+      resolveRating(data),                      // al editar, refresca la nota
     ]);
 
     const fields = {
@@ -776,6 +802,7 @@ async function saveDialog() {
       year:             seasonYear ?? data.year,
       duration_minutes: duration,
       episode_count:    episodeCount,
+      rating:           rating ?? data.rating ?? null,
     };
     const ok = mode === 'add'
       ? await addItem({ ...data, ...fields })
@@ -837,6 +864,19 @@ async function resolveEpisodeCount(item, seasonNumber) {
     return tvDetails.number_of_episodes || null;
   } catch (err) {
     console.error('Error obteniendo capítulos:', err);
+    return null;
+  }
+}
+
+// Nota media actual en TMDB (detalles cacheados). null si no hay votos o falla.
+async function resolveRating(item) {
+  try {
+    const details = item.type === 'movie'
+      ? await fetchMovieDetails(item.tmdb_id)
+      : await fetchTVDetails(item.tmdb_id);
+    return ratingFrom(details);
+  } catch (err) {
+    console.error('Error obteniendo nota:', err);
     return null;
   }
 }
@@ -925,13 +965,14 @@ async function loadItems() {
   backfillMissingInfo();
 }
 
-// Rellena en segundo plano la duración y los capítulos de los títulos que no los tienen
+// Rellena en segundo plano la duración, los capítulos y la nota de los títulos que no los tienen
 // (p. ej. guardados antes de que existieran esos cálculos). Va de uno en uno para no
 // saturar TMDB, y cada título se intenta como mucho una vez por carga de página.
 const backfillTried = new Set();
 let backfillRunning = false;
 const missingDuration = i => i.duration_minutes == null;
 const missingEpisodes = i => i.type === 'tv' && i.episode_count == null;
+const missingRating   = i => i.rating == null;
 
 async function backfillMissingInfo() {
   if (backfillRunning) return;
@@ -939,13 +980,14 @@ async function backfillMissingInfo() {
   let changed = 0;
   try {
     const pending = state.items.filter(i =>
-      (missingDuration(i) || missingEpisodes(i)) && !backfillTried.has(i.id));
+      (missingDuration(i) || missingEpisodes(i) || missingRating(i)) && !backfillTried.has(i.id));
     for (const item of pending) {
       backfillTried.add(item.id);
       const season = item.season_number;
-      const [duration, episodes] = await Promise.all([
+      const [duration, episodes, rating] = await Promise.all([
         missingDuration(item) ? resolveDuration(item, season) : null,
         missingEpisodes(item) ? resolveEpisodeCount(item, season) : null,
+        missingRating(item)   ? resolveRating(item) : null,
       ]);
       // Puede haberse editado o borrado mientras esperábamos a TMDB
       const current = state.items.find(i => i.id === item.id);
@@ -953,6 +995,7 @@ async function backfillMissingInfo() {
       const updates = {};
       if (duration != null && missingDuration(current)) updates.duration_minutes = duration;
       if (episodes != null && missingEpisodes(current)) updates.episode_count = episodes;
+      if (rating != null && missingRating(current))     updates.rating = rating;
       if (Object.keys(updates).length === 0) continue;
       const { error } = await supabase
         .from('watchlist_items')
@@ -997,6 +1040,7 @@ async function addItem(item) {
       season_number:    item.season_number ?? null,
       duration_minutes: item.duration_minutes ?? null,
       episode_count:    item.episode_count ?? null,
+      rating:           item.rating ?? null,
     })
     .select()
     .single();

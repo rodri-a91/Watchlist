@@ -32,6 +32,7 @@ CREATE TABLE watchlist_items (
   season_number int,
   duration_minutes int,
   episode_count int,
+  rating numeric(3,1),
   watched boolean NOT NULL DEFAULT false,
   added_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT watchlist_items_uniqueness UNIQUE NULLS NOT DISTINCT (user_id, tmdb_id, type, season_number),
