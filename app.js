@@ -743,23 +743,6 @@ function renderSeasonOptions(seasons, currentSeasonNumber) {
     }),
   ];
   els.dialogSeasonOptions.innerHTML = rows.join('');
-
-  els.dialogSeasonOptions.querySelectorAll('.season-option').forEach(label => {
-    label.addEventListener('click', e => {
-      e.preventDefault();
-      const seasonAttr = label.dataset.season;
-      const isAll = seasonAttr === 'all';
-      state.pendingItem.seasonNumber = isAll ? null : parseInt(seasonAttr, 10);
-      state.pendingItem.seasonYear   = isAll ? state.pendingItem.showYear : parseInt(label.dataset.year, 10);
-
-      els.dialogSeasonOptions.querySelectorAll('.season-option').forEach(l => {
-        l.classList.remove('checked');
-        l.querySelector('input').checked = false;
-      });
-      label.classList.add('checked');
-      label.querySelector('input').checked = true;
-    });
-  });
 }
 
 function closeDialog() {
@@ -1209,16 +1192,28 @@ function setupListeners() {
     });
   });
 
-  els.dialogChecks.addEventListener('click', e => {
+  // Casillas y radios nativos: el navegador gestiona clic, toque y teclado; aquí solo
+  // escuchamos 'change' para sincronizar el estado y el estilo.
+  els.dialogChecks.addEventListener('change', e => {
     const label = e.target.closest('.platform-check');
     if (!label || !state.pendingItem) return;
-    e.preventDefault();
     const pending = state.pendingItem;
     pending.touched = true;  // a partir de aquí las sugerencias no cambian la selección
-    toggleInSet(pending.selected, label.dataset.platform);
-    const checked = pending.selected.has(label.dataset.platform);
-    label.classList.toggle('checked', checked);
-    label.querySelector('input').checked = checked;
+    const id = label.dataset.platform;
+    if (e.target.checked) pending.selected.add(id);
+    else pending.selected.delete(id);
+    label.classList.toggle('checked', e.target.checked);
+  });
+
+  els.dialogSeasonOptions.addEventListener('change', e => {
+    const label = e.target.closest('.season-option');
+    if (!label || !state.pendingItem) return;
+    const pending = state.pendingItem;
+    const isAll = label.dataset.season === 'all';
+    pending.seasonNumber = isAll ? null : parseInt(label.dataset.season, 10);
+    pending.seasonYear   = isAll ? pending.showYear : parseInt(label.dataset.year, 10);
+    els.dialogSeasonOptions.querySelectorAll('.season-option')
+      .forEach(l => l.classList.toggle('checked', l === label));
   });
 
   els.dialogSave.addEventListener('click',   saveDialog);

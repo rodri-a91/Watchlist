@@ -790,7 +790,24 @@ main {
   font-size: 13px;
 }
 .season-option:hover { border-color: var(--border-strong); }
-.season-option input { display: none; }
+/* Inputs reales pero invisibles: siguen recibiendo foco y teclado (Tab, Espacio, flechas).
+   Con display:none no serían accesibles por teclado. */
+.season-option,
+.platform-check { position: relative; }
+.season-option input,
+.platform-check input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.season-option:has(input:focus-visible),
+.platform-check:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .season-option .option-radio {
   width: 14px;
   height: 14px;
@@ -841,7 +858,6 @@ main {
   font-size: 13px;
 }
 .platform-check:hover { border-color: var(--border-strong); }
-.platform-check input { display: none; }
 .platform-check .dot {
   width: 10px;
   height: 10px;
