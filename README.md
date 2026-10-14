@@ -19,6 +19,7 @@ Lista unificada de películas y series pendientes entre todas tus plataformas de
 ```sql
 CREATE TABLE watchlist_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
   tmdb_id int NOT NULL,
   type text NOT NULL CHECK (type IN ('movie', 'tv')),
   title text NOT NULL,
@@ -32,21 +33,24 @@ CREATE TABLE watchlist_items (
   duration_minutes int,
   watched boolean NOT NULL DEFAULT false,
   added_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT watchlist_items_uniqueness UNIQUE NULLS NOT DISTINCT (tmdb_id, type, season_number),
+  CONSTRAINT watchlist_items_uniqueness UNIQUE NULLS NOT DISTINCT (user_id, tmdb_id, type, season_number),
   CONSTRAINT season_only_for_tv CHECK (type = 'tv' OR season_number IS NULL)
 );
 
 ALTER TABLE watchlist_items ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "authenticated_full_access"
+-- Cada usuario solo ve y modifica sus propias filas
+CREATE POLICY "own_items"
   ON watchlist_items
   FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING ((SELECT auth.uid()) = user_id)
+  WITH CHECK ((SELECT auth.uid()) = user_id);
 ```
 
 Pulsa **Run**. Si todo ha ido bien, verás la tabla en **Table Editor**.
+
+> Si ya tenías la tabla creada con la versión anterior (sin `user_id`), no la recrees: ejecuta `migrations/001_user_id.sql`.
 
 ### 2. Crear tu usuario en Supabase
 
@@ -69,7 +73,7 @@ Para que nadie más pueda crearse una cuenta en tu app:
 
 ### 5. Configurar el proyecto
 
-Abre `config.js` y reemplaza los tres placeholders por tus valores reales:
+Abre `config.js` y pon tus valores reales. El archivo se sube al repo a propósito, porque Vercel lo sirve tal cual y no hay paso de build:
 
 - `SUPABASE_URL` y `SUPABASE_ANON_KEY` los encuentras en Supabase → **Project Settings → API**
 - `TMDB_API_KEY` es la que acabas de copiar
@@ -97,6 +101,6 @@ Mismo flujo en [netlify.com](https://netlify.com).
 
 ## Sobre la seguridad
 
-Este proyecto usa autenticación por email + contraseña gestionada por Supabase Auth. Solo el usuario que tú crees en Supabase puede acceder. Las claves que viven en `config.js` son seguras de exponer en el frontend: la `SUPABASE_ANON_KEY` está diseñada para eso y, gracias a las políticas RLS, no permite leer ni escribir nada sin haber iniciado sesión. La `TMDB_API_KEY` tampoco es sensible.
+Este proyecto usa autenticación por email + contraseña gestionada por Supabase Auth. Solo el usuario que tú crees en Supabase puede acceder, y cada usuario solo ve sus propias filas (`user_id` + RLS). Las claves que viven en `config.js` son seguras de exponer en el frontend: la `SUPABASE_ANON_KEY` está diseñada para eso y, gracias a las políticas RLS, no permite leer ni escribir nada sin haber iniciado sesión. La `TMDB_API_KEY` tampoco es sensible.
 
 La sesión se guarda en `localStorage` del navegador, así que solo necesitas hacer login una vez por dispositivo. Si quieres invalidar todas las sesiones, en Supabase puedes ir a **Authentication → Users**, abrir tu usuario y forzar logout.
