@@ -187,6 +187,25 @@ const state = {
   pendingItem: null,          // item del modal
 };
 
+// ---- Preferencias (por navegador) ----
+// Vista, orden y "Mostrar vistos" se recuerdan entre visitas. localStorage puede
+// no estar disponible (modo privado, bloqueado…): en ese caso se usan los valores por defecto.
+const PREFS_KEY = 'watchlist:prefs';
+const SORT_OPTIONS = ['added_desc', 'year_desc', 'year_asc', 'duration_desc', 'duration_asc'];
+
+function loadPrefs() {
+  let prefs = {};
+  try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch {}
+  if (prefs.viewMode === 'grid' || prefs.viewMode === 'list') state.viewMode = prefs.viewMode;
+  if (SORT_OPTIONS.includes(prefs.sortBy)) state.sortBy = prefs.sortBy;
+  if (typeof prefs.showWatched === 'boolean') state.showWatched = prefs.showWatched;
+}
+
+function savePrefs() {
+  const { viewMode, sortBy, showWatched } = state;
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ viewMode, sortBy, showWatched })); } catch {}
+}
+
 // ---- Referencias del DOM ----
 const $ = id => document.getElementById(id);
 const els = {
@@ -383,9 +402,12 @@ function renderSearchResults(results) {
   }
   els.searchResults.innerHTML = results.map(r => {
     const item = normalizeTMDBItem(r);
+    const badge = inListLabel(item);
     return `
-      <button class="result-card" data-tmdb-id="${item.tmdb_id}" data-type="${item.type}">
-        <div class="result-poster" style="background-image: url('${posterURL(item.poster_path)}')"></div>
+      <button class="result-card ${badge ? 'in-list' : ''}" data-tmdb-id="${item.tmdb_id}" data-type="${item.type}">
+        <div class="result-poster" style="background-image: url('${posterURL(item.poster_path)}')">
+          ${badge ? `<span class="in-list-badge">${badge}</span>` : ''}
+        </div>
         <div class="result-info">
           <h4 class="result-title">${escapeHTML(item.title)}</h4>
           <div class="result-meta">${item.type === 'movie' ? 'Peli' : 'Serie'} · ${item.year ?? '—'}</div>
@@ -400,6 +422,16 @@ function renderSearchResults(results) {
       openAddDialog(tmdbItem);
     });
   });
+}
+
+// Texto del distintivo para un resultado de búsqueda que ya está en la lista, o null.
+// Para series con temporadas sueltas indica cuáles: "T1 · T3 en tu lista".
+function inListLabel(item) {
+  const entries = state.items.filter(i => i.tmdb_id === item.tmdb_id && i.type === item.type);
+  if (entries.length === 0) return null;
+  if (entries.some(i => i.season_number == null)) return 'En tu lista';
+  const seasons = entries.map(i => i.season_number).sort((a, b) => a - b);
+  return `${seasons.map(n => `T${n}`).join(' · ')} en tu lista`;
 }
 
 // ---- Modal: añadir / editar plataformas ----
@@ -596,6 +628,14 @@ async function resolveDuration(item, seasonNumber) {
     const generalRuntime = tvDetails.episode_run_time;
     if (Array.isArray(generalRuntime) && generalRuntime.length > 0) {
       return generalRuntime[0];
+    }
+
+    // TMDB suele dejar episode_run_time vacío: usamos la media de la última temporada
+    // emitida (si no es la que ya hemos consultado arriba)
+    const lastSeason = tvDetails.last_episode_to_air?.season_number;
+    if (lastSeason != null && lastSeason !== seasonNumber) {
+      const avg = averageEpisodeRuntime(await fetchSeasonDetails(item.tmdb_id, lastSeason));
+      if (avg != null) return avg;
     }
     return null;
   } catch (err) {
@@ -860,19 +900,21 @@ function setupListeners() {
 
   els.showWatched.addEventListener('change', e => {
     state.showWatched = e.target.checked;
+    savePrefs();
     renderList();
   });
 
   els.sortSelect.addEventListener('change', e => {
     state.sortBy = e.target.value;
+    savePrefs();
     renderList();
   });
 
   els.viewButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       state.viewMode = btn.dataset.view;
-      els.viewButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      syncViewButtons();
+      savePrefs();
       renderList();
     });
   });
@@ -903,7 +945,20 @@ function escapeHTML(str) {
   })[c]);
 }
 
+function syncViewButtons() {
+  els.viewButtons.forEach(b => b.classList.toggle('active', b.dataset.view === state.viewMode));
+}
+
+// Refleja en los controles las preferencias cargadas
+function applyPrefsToUI() {
+  els.sortSelect.value = state.sortBy;
+  els.showWatched.checked = state.showWatched;
+  syncViewButtons();
+}
+
 // ---- Arranque ----
+loadPrefs();
+applyPrefsToUI();
 renderPlatformFilters();
 setupListeners();
 if (supabase) initAuth();
