@@ -910,6 +910,40 @@ async function loadItems() {
   }
   state.items = data || [];
   onItemsChanged({ animate: true });
+  backfillDurations();
+}
+
+// Rellena en segundo plano la duración de los títulos que no la tienen (p. ej. series
+// guardadas antes de que existiera el cálculo por última temporada). Va de uno en uno
+// para no saturar TMDB, y cada título se intenta como mucho una vez por carga de página.
+const backfillTried = new Set();
+let backfillRunning = false;
+async function backfillDurations() {
+  if (backfillRunning) return;
+  backfillRunning = true;
+  let changed = 0;
+  try {
+    const pending = state.items.filter(i => i.duration_minutes == null && !backfillTried.has(i.id));
+    for (const item of pending) {
+      backfillTried.add(item.id);
+      const season = item.season_number;
+      const duration = await resolveDuration(item, season);
+      if (duration == null) continue;
+      // Puede haberse editado o borrado mientras esperábamos a TMDB
+      const current = state.items.find(i => i.id === item.id);
+      if (!current || current.duration_minutes != null || current.season_number !== season) continue;
+      const { error } = await supabase
+        .from('watchlist_items')
+        .update({ duration_minutes: duration })
+        .eq('id', item.id);
+      if (error) { console.error('Error guardando duración:', error); continue; }
+      current.duration_minutes = duration;
+      changed++;
+    }
+  } finally {
+    backfillRunning = false;
+  }
+  if (changed > 0) renderList();
 }
 
 // Devuelve true si se ha guardado
