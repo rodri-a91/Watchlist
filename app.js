@@ -442,11 +442,11 @@ function itemCardHTML(item, i) {
   const metaParts = [item.year ?? '—'];
   if (item.episode_count != null) metaParts.push(formatEpisodes(item.episode_count));
   if (durationStr) metaParts.push(durationStr);
-  // La nota va aparte: en rejilla ocupa su propia línea, en lista sigue en la misma (ver CSS)
-  const ratingHTML = item.rating != null
-    ? `<span class="item-rating">★ ${Number(item.rating).toFixed(1)}</span>`
-    : '';
-  const metaLine = metaParts.join(' · ') + ratingHTML;
+  // La nota se pinta dos veces: en rejilla junto a las plataformas, en lista tras la meta (ver CSS)
+  const ratingText = item.rating != null ? `★ ${Number(item.rating).toFixed(1)}` : '';
+  const metaLine = metaParts.join(' · ')
+    + (ratingText ? `<span class="item-rating item-rating-meta">${ratingText}</span>` : '');
+  const ratingTag = ratingText ? `<span class="item-rating item-rating-row">${ratingText}</span>` : '';
 
   return `
     <div class="item-card ${item.watched ? 'watched' : ''}"
@@ -456,7 +456,7 @@ function itemCardHTML(item, i) {
       <div class="item-info">
         <h3 class="item-title item-open">${escapedTitle}${seasonBadge}</h3>
         <div class="item-year">${metaLine}</div>
-        <div class="item-platforms">${platformTags}</div>
+        <div class="item-platforms">${ratingTag}${platformTags}</div>
         <div class="item-actions">
           <button class="icon-btn watched-btn" title="${item.watched ? 'Marcar como no visto' : 'Marcar como visto'}">
             ${item.watched ? '↺' : '✓'} <span class="btn-label">${item.watched ? 'No visto' : 'Visto'}</span>

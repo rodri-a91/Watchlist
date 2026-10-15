@@ -522,25 +522,27 @@ main {
   font-size: 11px;
   color: var(--text-muted);
 }
-/* Nota de TMDB: en rejilla, línea propia; en lista, a continuación con separador */
-.item-rating {
-  display: block;
-  color: var(--accent);
-  margin-top: 2px;
+/* Nota de TMDB: en rejilla, en la fila de plataformas (que bajan si no caben);
+   en lista, a continuación de la meta con separador */
+.item-rating { color: var(--accent); }
+.item-rating-meta { display: none; }
+.item-rating-row {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  margin-right: 4px;
 }
-.watchlist-grid.list-view .item-rating {
-  display: inline;
-  margin: 0;
-}
-.watchlist-grid.list-view .item-rating::before {
+.watchlist-grid.list-view .item-rating-row { display: none; }
+.watchlist-grid.list-view .item-rating-meta { display: inline; }
+.watchlist-grid.list-view .item-rating-meta::before {
   content: ' · ';
   color: var(--text-muted);
 }
 .item-platforms {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .platform-tag {
   font-family: 'Geist Mono', monospace;
