@@ -577,13 +577,17 @@ main {
   gap: 5px;
   transition: all 0.15s;
 }
-.icon-btn:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
+/* Solo con ratón: en táctil el :hover se queda pegado y, al desaparecer la tarjeta,
+   lo hereda el botón de la que ocupa su lugar */
+@media (hover: hover) {
+  .icon-btn:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .icon-btn.watched-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .icon-btn.delete-btn:hover { color: var(--danger); border-color: var(--danger); }
+  .icon-btn.edit-btn:hover { color: var(--text); border-color: var(--text-muted); }
 }
-.icon-btn.watched-btn:hover { color: var(--accent); border-color: var(--accent); }
-.icon-btn.delete-btn:hover { color: var(--danger); border-color: var(--danger); }
-.icon-btn.edit-btn:hover { color: var(--text); border-color: var(--text-muted); }
 
 .empty-state,
 .loading-state {
