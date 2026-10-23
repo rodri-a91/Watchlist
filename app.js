@@ -537,7 +537,6 @@ async function openDetailDialog(id) {
         `url('${escapeHTML(TMDB_BACKDROP + details.backdrop_path)}')`;
     }
     $('detail-extra').innerHTML = detailExtraHTML(item, details, season);
-    renderDetailActions(id, findTrailer(details));
   } catch (err) {
     console.error(err);
     if (detailItemId !== id) return;
@@ -598,6 +597,19 @@ function detailExtraHTML(item, details, season) {
     parts.push(`<h3 class="dialog-section-title">Reparto</h3>
       <p class="detail-people">${cast.map(c => escapeHTML(c.name)).join(', ')}</p>`);
   }
+
+  const trailerKey = findTrailer(details);
+  if (trailerKey) {
+    // youtube-nocookie: no deja cookies hasta que se da a reproducir.
+    // YouTube rechaza embeds sin Referer, de ahí el referrerpolicy.
+    parts.push(`<h3 class="dialog-section-title">Tráiler</h3>
+      <div class="detail-trailer">
+        <iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailerKey)}?rel=0"
+          title="Tráiler de ${escapeHTML(item.title)}" loading="lazy"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+      </div>`);
+  }
   return parts.join('');
 }
 
@@ -607,18 +619,15 @@ function findTrailer(details) {
     .filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
   const score = v => (v.iso_639_1 === 'es' ? 4 : 0) + (v.type === 'Trailer' ? 2 : 0) + (v.official ? 1 : 0);
   const best = videos.sort((a, b) => score(b) - score(a))[0];
-  return best ? `https://www.youtube.com/watch?v=${encodeURIComponent(best.key)}` : null;
+  return best?.key ?? null;
 }
 
 // Botones de la ficha. Se re-renderizan al marcar como visto.
-function renderDetailActions(id, trailerURL) {
+function renderDetailActions(id) {
   const box = $('detail-actions');
   const item = state.items.find(i => i.id === id);
   if (!box || !item || detailItemId !== id) return;
-  if (trailerURL !== undefined) box.dataset.trailer = trailerURL || '';
-  const trailer = box.dataset.trailer;
   box.innerHTML = `
-    ${trailer ? `<a class="btn-ghost detail-trailer" href="${escapeHTML(trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a>` : ''}
     <button type="button" class="btn-ghost" data-action="watched">
       ${item.watched ? '↺ Marcar como no visto' : '✓ Marcar como visto'}
     </button>
@@ -1194,7 +1203,11 @@ function setupListeners() {
 
   // Ficha de detalle
   els.detailClose.addEventListener('click', () => els.detailDialog.close());
-  els.detailDialog.addEventListener('close', () => { detailItemId = null; });
+  els.detailDialog.addEventListener('close', () => {
+    detailItemId = null;
+    // Un iframe oculto sigue sonando: se quita al cerrar
+    els.detailBody.querySelector('.detail-trailer')?.remove();
+  });
   els.detailDialog.addEventListener('click', e => {
     // Clic en el fondo (fuera del contenido) cierra
     if (e.target === els.detailDialog) return els.detailDialog.close();
