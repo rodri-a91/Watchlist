@@ -1511,8 +1511,8 @@ function summaryHTML(entries, today) {
           ${thumbHTML(row)}
           <span class="agenda-main">
             <span class="agenda-title">${escapeHTML(row.title)}</span>
-            ${cls.state === 'airing' && cls.total
-              ? episodeBarHTML(cls, row, today)
+            ${barFor(cls, row, show)
+              ? episodeBarHTML(barFor(cls, row, show), row, barLabel(cls, row, today))
               : `<span class="agenda-label">${escapeHTML(statusText(cls, today))}</span>`}
           </span>
           ${pending ? `<span class="pending-badge">${escapeHTML(pending)}</span>` : ''}
@@ -1529,8 +1529,22 @@ function summaryHTML(entries, today) {
 
 // Temporada en emisión como cuadrados: dorados los vistos (según "voy por"),
 // en el color de la plataforma los emitidos sin ver y vacíos los que faltan por emitir
-function episodeBarHTML(cls, row, today) {
-  const text = statusText(cls, today);
+// Qué temporada pintar como cuadrados, o null para dejar el texto:
+// en emisión, la temporada en curso; finalizada, la del "voy por" (ya emitida entera)
+function barFor(cls, row, show) {
+  if (cls.state === 'airing') return cls.total ? cls : null;
+  if (cls.state !== 'ended' || row.seen_season == null) return null;
+  const total = show.seasons.find(s => s.number === row.seen_season)?.episodeCount;
+  return total ? { season: row.seen_season, aired: total, total } : null;
+}
+
+function barLabel(cls, row, today) {
+  return cls.state === 'ended'
+    ? `Finalizada · vas por T${row.seen_season}E${row.seen_episode}`
+    : statusText(cls, today);
+}
+
+function episodeBarHTML(cls, row, text) {
   const seenUpTo = row.seen_season == null || row.seen_season < cls.season ? 0
     : row.seen_season > cls.season ? cls.total
     : row.seen_episode;
