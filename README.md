@@ -48,9 +48,34 @@ CREATE POLICY "own_items"
   TO authenticated
   USING ((SELECT auth.uid()) = user_id)
   WITH CHECK ((SELECT auth.uid()) = user_id);
+
+-- Series que sigues en la pestaña "Próximos" (independiente de la watchlist)
+CREATE TABLE followed_shows (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+  tmdb_id int NOT NULL,
+  title text NOT NULL,
+  poster_path text,
+  platforms text[] NOT NULL DEFAULT '{}'
+    CHECK (platforms <@ ARRAY['netflix','hbo','disney','apple','skyshowtime','prime','movistar','plex','filmin']::text[]),
+  seen_season int,   -- puntero "voy por"; null = sin puntero
+  seen_episode int,
+  added_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT followed_shows_uniqueness UNIQUE (user_id, tmdb_id),
+  CONSTRAINT seen_pointer_complete CHECK ((seen_season IS NULL) = (seen_episode IS NULL))
+);
+
+ALTER TABLE followed_shows ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "own_follows"
+  ON followed_shows
+  FOR ALL
+  TO authenticated
+  USING ((SELECT auth.uid()) = user_id)
+  WITH CHECK ((SELECT auth.uid()) = user_id);
 ```
 
-Pulsa **Run**. Si todo ha ido bien, verás la tabla en **Table Editor**.
+Pulsa **Run**. Si todo ha ido bien, verás las tablas en **Table Editor**.
 ### 2. Crear tu usuario en Supabase
 
 1. En el menú izquierdo, ve a **Authentication → Users → Add user → Create new user**.
@@ -76,6 +101,27 @@ Abre `config.js` y pon tus valores reales. El archivo se sube al repo a propósi
 
 - `SUPABASE_URL` y `SUPABASE_ANON_KEY` los encuentras en Supabase → **Project Settings → API**
 - `TMDB_API_KEY` es la que acabas de copiar
+
+## Próximos (series que sigues)
+
+La pestaña **Próximos** es una lista aparte de series seguidas, con la agenda de capítulos y estrenos sacada de TMDB:
+
+- **Seguir una serie**: con la pestaña Próximos abierta, el buscador solo muestra series y al pulsar una la sigues. También desde la ficha de una serie de tu lista (**+ Seguir en Próximos**).
+- **Agenda**: lanzamientos de los últimos 7 días y los que vienen, agrupados (Hoy, Mañana, Esta semana, Más adelante). Una temporada que sale entera el mismo día (Netflix y similares) aparece como un único bloque. Debajo, un resumen por serie: en emisión, próximos estrenos, renovadas sin fecha y finalizadas.
+- **Calendario**: vista mensual. En el móvil las celdas solo llevan puntos y, al tocar un día, sus lanzamientos salen debajo.
+- **Voy por**: en la ficha de la serie, pulsa el último capítulo que has visto. La app solo lo usa para decirte si vas al día o cuántos te faltan; no lleva el seguimiento capítulo a capítulo.
+
+Los datos de TMDB se guardan 12 horas en el navegador (`localStorage`). El botón **Actualizar** fuerza la recarga.
+
+**Limitación conocida**: TMDB da el día de emisión pero no la hora. Una serie de EE. UU. que se emite de noche allí aparece un día antes de cuando se puede ver en España.
+
+## Tests
+
+La lógica de fechas y calendario (`schedule.js`) tiene tests sin dependencias:
+
+```
+node --test
+```
 
 ## Ejecutar en local
 

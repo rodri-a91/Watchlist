@@ -4,6 +4,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, TMDB_API_KEY } from './config.js';
+import {
+  todayISO, formatShortDate, monthGrid, shiftMonth, monthTitle, seasonsToFetch,
+  normalizeShow, mergeSeason, groupDrops, dropLabel, dropShortLabel, bucketFor,
+  classifyShow, pendingCount, statusText, pendingText, STATUS_LABELS,
+} from './schedule.js';
 
 // ---- Configuración de plataformas ----
 const PLATFORMS = [
@@ -246,6 +251,13 @@ const state = {
   sortBy: 'added_desc',       // 'added_desc' | 'year_desc' | 'year_asc'
   viewMode: 'grid',           // 'grid' | 'list'
   pendingItem: null,          // item del modal
+  tab: 'list',                // 'list' | 'upcoming'
+  // Próximos (series seguidas)
+  followed: [],               // filas de followed_shows
+  schedules: new Map(),       // tmdb_id -> serie normalizada (ver schedule.js)
+  upcomingView: 'agenda',     // 'agenda' | 'calendar'
+  calMonth: null,             // 'YYYY-MM' que enseña el calendario (null = el actual)
+  calDay: null,               // día seleccionado en el calendario
 };
 
 // ---- Preferencias (por navegador) ----
@@ -260,11 +272,15 @@ function loadPrefs() {
   if (prefs.viewMode === 'grid' || prefs.viewMode === 'list') state.viewMode = prefs.viewMode;
   if (SORT_OPTIONS.includes(prefs.sortBy)) state.sortBy = prefs.sortBy;
   if (typeof prefs.showWatched === 'boolean') state.showWatched = prefs.showWatched;
+  if (prefs.tab === 'list' || prefs.tab === 'upcoming') state.tab = prefs.tab;
+  if (prefs.upcomingView === 'agenda' || prefs.upcomingView === 'calendar') state.upcomingView = prefs.upcomingView;
 }
 
 function savePrefs() {
-  const { viewMode, sortBy, showWatched } = state;
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ viewMode, sortBy, showWatched })); } catch {}
+  const { viewMode, sortBy, showWatched, tab, upcomingView } = state;
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ viewMode, sortBy, showWatched, tab, upcomingView }));
+  } catch {}
 }
 
 // ---- Referencias del DOM ----
@@ -278,7 +294,7 @@ const els = {
   genreFilters:     $('genre-filters'),
   showWatched:      $('show-watched'),
   sortSelect:       $('sort-select'),
-  viewButtons:      document.querySelectorAll('.view-btn'),
+  viewButtons:      document.querySelectorAll('.view-btn[data-view]'),
   grid:             $('watchlist-grid'),
   emptyState:       $('empty-state'),
   loadingState:     $('loading-state'),
@@ -295,6 +311,16 @@ const els = {
   dialogSave:       $('dialog-save'),
   dialogCancel:     $('dialog-cancel'),
   dialogClose:      $('dialog-close'),
+  // Pestañas y Próximos
+  tabButtons:       document.querySelectorAll('.tab-btn'),
+  watchlistSection: $('watchlist-section'),
+  upcomingSection:  $('upcoming-section'),
+  upcomingViews:    document.querySelectorAll('[data-upcoming-view]'),
+  upcomingRefresh:  $('upcoming-refresh'),
+  upcomingBody:     $('upcoming-body'),
+  showDialog:       $('show-dialog'),
+  showBody:         $('show-body'),
+  showClose:        $('show-close'),
   // Autenticación
   loginSection:     $('login-section'),
   loginForm:        $('login-form'),
@@ -470,14 +496,20 @@ function itemCardHTML(item, i) {
 }
 
 // ---- Render: resultados de búsqueda ----
+// Se guardan para volver a pintarlos al cambiar de pestaña (en Próximos solo salen series)
+let lastResults = null;
+
 function renderSearchResults(results) {
-  if (results.length === 0) {
+  lastResults = results;
+  const upcoming = state.tab === 'upcoming';
+  const shown = upcoming ? results.filter(r => r.media_type === 'tv') : results;
+  if (shown.length === 0) {
     els.searchResults.innerHTML = `<p style="grid-column:1/-1;color:var(--text-muted);font-style:italic;padding:20px 0;">Sin resultados.</p>`;
     return;
   }
-  els.searchResults.innerHTML = results.map(r => {
+  els.searchResults.innerHTML = shown.map(r => {
     const item = normalizeTMDBItem(r);
-    const badge = inListLabel(item);
+    const badge = upcoming ? (followedRow(item.tmdb_id) ? 'Siguiendo' : null) : inListLabel(item);
     return `
       <button class="result-card ${badge ? 'in-list' : ''}" data-tmdb-id="${item.tmdb_id}" data-type="${item.type}">
         <div class="result-poster" style="background-image: url('${posterURL(item.poster_path)}')">
@@ -493,8 +525,11 @@ function renderSearchResults(results) {
 
   els.searchResults.querySelectorAll('.result-card').forEach((card, idx) => {
     card.addEventListener('click', () => {
-      const tmdbItem = normalizeTMDBItem(results[idx]);
-      openAddDialog(tmdbItem);
+      const tmdbItem = normalizeTMDBItem(shown[idx]);
+      if (!upcoming) return openAddDialog(tmdbItem);
+      // En Próximos se sigue directamente; si ya la sigues, se abre su ficha
+      if (followedRow(tmdbItem.tmdb_id)) return openShowDialog(tmdbItem.tmdb_id);
+      followShow(tmdbItem).then(ok => { if (ok) clearSearch(); });
     });
   });
 }
@@ -627,7 +662,13 @@ function renderDetailActions(id) {
   const box = $('detail-actions');
   const item = state.items.find(i => i.id === id);
   if (!box || !item || detailItemId !== id) return;
+  const follow = item.type === 'tv'
+    ? `<button type="button" class="btn-ghost" data-action="follow">
+         ${followedRow(item.tmdb_id) ? 'Dejar de seguir' : '+ Seguir en Próximos'}
+       </button>`
+    : '';
   box.innerHTML = `
+    ${follow}
     <button type="button" class="btn-ghost" data-action="watched">
       ${item.watched ? '↺ Marcar como no visto' : '✓ Marcar como visto'}
     </button>
@@ -913,6 +954,13 @@ function showLogin() {
   els.genreFilters.innerHTML = '';
   els.loadingState.hidden = false;
   els.loadingState.textContent = 'Cargando tu lista…';
+  // y las series seguidas; followedGen descarta cargas que sigan en marcha
+  followedGen++;
+  state.followed = [];
+  state.schedules.clear();
+  els.upcomingBody.innerHTML = '';
+  if (els.showDialog.open) els.showDialog.close();
+  clearSearch();
 }
 
 function showApp(user) {
@@ -921,6 +969,7 @@ function showApp(user) {
   els.userBar.hidden = false;
   els.userEmail.textContent = user.email;
   loadItems();
+  loadFollowed();
 }
 
 async function handleLogin(e) {
@@ -1060,10 +1109,18 @@ async function addItem(item) {
   }
   state.items.unshift(data);
   onItemsChanged();
-  // limpiar búsqueda
+  clearSearch();
+  return true;
+}
+
+function clearSearch() {
+  clearTimeout(searchTimeout);
+  searchController?.abort();
+  searchController = null;
   els.searchInput.value = '';
   els.searchResults.innerHTML = '';
-  return true;
+  els.searchStatus.textContent = '';
+  lastResults = null;
 }
 
 async function toggleWatched(id) {
@@ -1120,6 +1177,511 @@ async function deleteItem(id) {
   if (error) { alert('Error: ' + error.message); loadItems(); }
 }
 
+// ==========================================
+// Próximos: series seguidas (tabla followed_shows)
+// ==========================================
+// Lista propia, independiente de la Watchlist. De cada serie se guarda un puntero
+// "voy por TxEy" (seen_season / seen_episode) solo para saber si vas al día.
+
+const followedRow = tmdbId => state.followed.find(f => f.tmdb_id === tmdbId);
+
+// Limita las peticiones simultáneas a TMDB: con muchas series seguidas,
+// cargar los calendarios supone decenas de llamadas
+function createLimiter(max) {
+  let active = 0;
+  const queue = [];
+  const next = () => {
+    if (active >= max || queue.length === 0) return;
+    active++;
+    const { fn, resolve, reject } = queue.shift();
+    fn().then(resolve, reject).finally(() => { active--; next(); });
+  };
+  return fn => new Promise((resolve, reject) => { queue.push({ fn, resolve, reject }); next(); });
+}
+const tmdbLimit = createLimiter(6);
+
+// ---- Caché de calendarios (por navegador) ----
+// La serie ya normalizada, 12 h. Son datos públicos de TMDB, no hace falta borrarlos al salir.
+const SCHEDULE_TTL = 12 * 60 * 60 * 1000;
+const scheduleKey = tmdbId => `watchlist:schedule:${tmdbId}`;
+
+function readScheduleCache(tmdbId) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(scheduleKey(tmdbId)));
+    if (cached?.show?.loaded && Date.now() - cached.fetchedAt < SCHEDULE_TTL) return cached.show;
+  } catch {}
+  return null;
+}
+
+function writeScheduleCache(show) {
+  try {
+    localStorage.setItem(scheduleKey(show.tmdbId), JSON.stringify({ fetchedAt: Date.now(), show }));
+  } catch {}
+}
+
+async function loadSchedule(row, force) {
+  if (!force) {
+    const cached = readScheduleCache(row.tmdb_id);
+    if (cached) return cached;
+  } else {
+    tvDetailsCache.delete(row.tmdb_id);  // si no, "Actualizar" reutilizaría la ficha en memoria
+  }
+  const details = await tmdbLimit(() => fetchTVDetails(row.tmdb_id));
+  const numbers = seasonsToFetch(details, row.seen_season, todayISO());
+  const seasons = await Promise.all(numbers.map(n =>
+    tmdbLimit(() => fetchSeasonDetails(row.tmdb_id, n)).catch(() => null)));
+  const show = normalizeShow(details, seasons);
+  writeScheduleCache(show);
+  return show;
+}
+
+// Carga los capítulos de una temporada que aún no estaba (p. ej. al elegirla en la ficha)
+async function ensureSeasonLoaded(tmdbId, seasonNumber) {
+  const show = state.schedules.get(tmdbId);
+  if (!show || seasonNumber == null || show.loaded.includes(seasonNumber)) return;
+  try {
+    const detail = await tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber));
+    const current = state.schedules.get(tmdbId);
+    if (!current) return;  // dejada de seguir o cierre de sesión mientras tanto
+    const merged = mergeSeason(current, detail);
+    state.schedules.set(tmdbId, merged);
+    writeScheduleCache(merged);
+  } catch (err) {
+    console.error('Error cargando temporada:', err);
+    return;
+  }
+  if (showDialogId === tmdbId) renderShowDialog();
+  renderUpcoming();
+}
+
+// ---- Operaciones de base de datos ----
+let followedGen = 0;          // sube al cerrar sesión: las cargas antiguas se descartan
+let schedulesLoading = false;
+
+async function loadFollowed() {
+  if (!supabase) return;
+  const gen = ++followedGen;
+  els.upcomingBody.innerHTML = '<p class="loading-state">Cargando series…</p>';
+  const { data, error } = await supabase
+    .from('followed_shows')
+    .select('*')
+    .order('added_at', { ascending: true });
+  if (gen !== followedGen) return;
+  if (error) {
+    console.error(error);
+    els.upcomingBody.innerHTML = '<p class="loading-state">No se pudieron cargar tus series. Recarga la página para reintentarlo.</p>';
+    return;
+  }
+  state.followed = data || [];
+  // Lo que haya en caché se pinta ya; el resto llega con refreshSchedules
+  state.followed.forEach(row => {
+    const cached = readScheduleCache(row.tmdb_id);
+    if (cached) state.schedules.set(row.tmdb_id, cached);
+  });
+  renderUpcoming();
+  refreshSchedules(false);
+}
+
+async function refreshSchedules(force) {
+  const gen = followedGen;
+  const rows = state.followed.filter(row => force || !state.schedules.has(row.tmdb_id));
+  if (rows.length === 0) return;
+  setSchedulesLoading(true);
+  await Promise.all(rows.map(async row => {
+    try {
+      const show = await loadSchedule(row, force);
+      if (gen === followedGen && followedRow(row.tmdb_id)) state.schedules.set(row.tmdb_id, show);
+    } catch (err) {
+      console.error(`Error cargando el calendario de ${row.title}:`, err);
+    }
+  }));
+  if (gen !== followedGen) return;
+  setSchedulesLoading(false);
+  renderUpcoming();
+  if (showDialogId != null) renderShowDialog();
+}
+
+function setSchedulesLoading(loading) {
+  schedulesLoading = loading;
+  els.upcomingRefresh.disabled = loading;
+  els.upcomingRefresh.textContent = loading ? 'Actualizando…' : 'Actualizar';
+}
+
+// Devuelve true si se ha guardado
+const followingNow = new Set();  // evita duplicar la serie con un doble clic
+async function followShow(item) {
+  if (!supabase) { alert('Configura primero config.js'); return false; }
+  if (followedRow(item.tmdb_id) || followingNow.has(item.tmdb_id)) return true;
+  followingNow.add(item.tmdb_id);
+  try {
+    // Plataformas sugeridas por JustWatch, solo para colorear el calendario
+    const platforms = await fetchSuggestedPlatforms('tv', item.tmdb_id).catch(err => {
+      console.error('Error obteniendo plataformas:', err);
+      return [];
+    });
+    const { data, error } = await supabase
+      .from('followed_shows')
+      .insert({ tmdb_id: item.tmdb_id, title: item.title, poster_path: item.poster_path, platforms })
+      .select()
+      .single();
+    if (error) {
+      alert(error.code === '23505' ? `Ya sigues "${item.title}".` : 'Error: ' + error.message);
+      return false;
+    }
+    state.followed.push(data);
+    renderUpcoming();
+    refreshSchedules(false);
+    return true;
+  } finally {
+    followingNow.delete(item.tmdb_id);
+  }
+}
+
+async function unfollowShow(tmdbId) {
+  const row = followedRow(tmdbId);
+  if (!row) return false;
+  if (!confirm(`¿Dejar de seguir "${row.title}"?`)) return false;
+  state.followed = state.followed.filter(f => f.tmdb_id !== tmdbId);
+  state.schedules.delete(tmdbId);
+  renderUpcoming();
+  const { error } = await supabase
+    .from('followed_shows')
+    .delete()
+    .eq('id', row.id);
+  if (error) { alert('Error: ' + error.message); loadFollowed(); }
+  return true;
+}
+
+// Fija el puntero "voy por". season/episode a null lo quita.
+async function setSeenPointer(tmdbId, season, episode) {
+  const row = followedRow(tmdbId);
+  if (!row) return;
+  const prev = { seen_season: row.seen_season, seen_episode: row.seen_episode };
+  const next = { seen_season: season, seen_episode: episode };
+  Object.assign(row, next);
+  renderShowDialog();
+  renderUpcoming();
+  const { error } = await supabase
+    .from('followed_shows')
+    .update(next)
+    .eq('id', row.id);
+  if (error) {
+    Object.assign(row, prev);
+    renderShowDialog();
+    renderUpcoming();
+    alert('Error: ' + error.message);
+  }
+}
+
+// ---- Render: sección Próximos ----
+const AGENDA_BUCKETS = [
+  ['past', 'Últimos 7 días'],
+  ['today', 'Hoy'],
+  ['tomorrow', 'Mañana'],
+  ['week', 'Esta semana'],
+  ['later', 'Más adelante'],
+];
+const SUMMARY_GROUPS = [
+  ['airing', 'En emisión'],
+  ['premiere', 'Próximos estrenos'],
+  ['waiting', 'Renovadas sin fecha'],
+  ['unknown', 'Sin datos de TMDB'],
+  ['ended', 'Finalizadas'],
+];
+const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+// Si "Más adelante" está desplegado; se conserva entre re-renders (marcar "voy por", Actualizar…)
+let laterOpen = false;
+
+function renderUpcoming() {
+  els.upcomingViews.forEach(b => b.classList.toggle('active', b.dataset.upcomingView === state.upcomingView));
+  if (state.followed.length === 0) {
+    els.upcomingBody.innerHTML = '<p class="empty-state">No sigues ninguna serie. Búscala arriba para seguirla.</p>';
+    return;
+  }
+  const today = todayISO();
+  const entries = state.followed.map(row => ({ row, show: state.schedules.get(row.tmdb_id) || null }));
+  const drops = entries
+    .filter(e => e.show)
+    .flatMap(e => groupDrops(e.show).map(drop => ({ drop, ...e })));
+  els.upcomingBody.innerHTML = state.upcomingView === 'calendar'
+    ? calendarHTML(drops, today)
+    : agendaHTML(entries, drops, today);
+}
+
+// Sin plataforma, gris: el dorado (--accent) queda para los capítulos vistos
+function showColor(row) {
+  return PLATFORM_MAP[row.platforms?.[0]]?.color ?? 'var(--text-muted)';
+}
+
+function platformTagsHTML(platforms) {
+  return (platforms || []).map(pid => {
+    const p = PLATFORM_MAP[pid];
+    return p ? `<span class="platform-tag" style="--platform-color: ${p.color}">${p.name}</span>` : '';
+  }).join('');
+}
+
+function thumbHTML(row) {
+  const bg = row.poster_path ? ` style="background-image: url('${posterURL(row.poster_path)}')"` : '';
+  return `<span class="upcoming-thumb"${bg}></span>`;
+}
+
+// "quedan 3 · te faltan 2"
+function rowStatus(row, show, today) {
+  const parts = [];
+  const cls = classifyShow(show, today);
+  if (cls.state === 'airing' && cls.remaining) parts.push(`quedan ${cls.remaining}`);
+  const pending = pendingText(pendingCount(show, row.seen_season, row.seen_episode, today));
+  if (pending) parts.push(pending.toLowerCase());
+  return parts.join(' · ');
+}
+
+function agendaRowHTML({ drop, row, show }, today) {
+  const tags = [drop.premiere && !drop.fullSeason ? 'estreno' : '', drop.finale && !drop.fullSeason ? 'final' : '']
+    .filter(Boolean).map(t => `<span class="drop-tag">${t}</span>`).join('');
+  const status = rowStatus(row, show, today);
+  return `
+    <button type="button" class="agenda-row ${drop.airDate <= today ? 'aired' : ''}"
+            data-show="${row.tmdb_id}" style="--platform-color: ${showColor(row)}">
+      ${thumbHTML(row)}
+      <span class="agenda-main">
+        <span class="agenda-title">${escapeHTML(row.title)}</span>
+        <span class="agenda-label">${escapeHTML(dropLabel(drop))}${tags}</span>
+        ${status ? `<span class="agenda-status">${escapeHTML(status)}</span>` : ''}
+      </span>
+      <span class="agenda-side">
+        <span class="agenda-date">${formatShortDate(drop.airDate, today)}</span>
+        <span class="item-platforms">${platformTagsHTML(row.platforms)}</span>
+      </span>
+    </button>`;
+}
+
+function agendaHTML(entries, drops, today) {
+  const buckets = new Map();
+  for (const d of drops) {
+    const b = bucketFor(d.drop.airDate, today);
+    if (!b) continue;
+    if (!buckets.has(b)) buckets.set(b, []);
+    buckets.get(b).push(d);
+  }
+  const sections = AGENDA_BUCKETS
+    .filter(([key]) => buckets.has(key))
+    .map(([key, label]) => {
+      const list = buckets.get(key);
+      const rows = `<div class="agenda-list">${list
+        .sort((a, b) => a.drop.airDate.localeCompare(b.drop.airDate))
+        .map(d => agendaRowHTML(d, today)).join('')}</div>`;
+      // "Más adelante" crece mucho con muchas series: va plegado
+      if (key === 'later') {
+        return `<details class="summary-group" data-group="later" ${laterOpen ? 'open' : ''}>
+          <summary class="dialog-section-title upcoming-heading">${label}
+            <span class="summary-count">${list.length}</span></summary>${rows}</details>`;
+      }
+      return `<h3 class="dialog-section-title upcoming-heading">${label}</h3>${rows}`;
+    })
+    .join('');
+
+  const loadingAll = schedulesLoading && drops.length === 0;
+  const agenda = sections || `<p class="empty-state">${loadingAll
+    ? 'Cargando calendario…'
+    : 'Nada en los últimos 7 días ni por delante con fecha.'}</p>`;
+  return agenda + summaryHTML(entries, today);
+}
+
+// Resumen por serie, debajo de la agenda
+function summaryHTML(entries, today) {
+  const groups = new Map();
+  for (const { row, show } of entries) {
+    if (!show && schedulesLoading) continue;  // aún cargando
+    const cls = show ? classifyShow(show, today) : { state: 'unknown' };
+    if (!groups.has(cls.state)) groups.set(cls.state, []);
+    groups.get(cls.state).push({ row, show, cls });
+  }
+  groups.get('premiere')?.sort((a, b) => a.cls.airDate.localeCompare(b.cls.airDate));
+
+  return SUMMARY_GROUPS
+    .filter(([key]) => groups.has(key))
+    .map(([key, label]) => {
+      const list = groups.get(key);
+      const rows = list.map(({ row, show, cls }) => {
+        const pending = show && pendingText(pendingCount(show, row.seen_season, row.seen_episode, today));
+        return `
+        <button type="button" class="summary-row" data-show="${row.tmdb_id}"
+                style="--platform-color: ${showColor(row)}">
+          ${thumbHTML(row)}
+          <span class="agenda-main">
+            <span class="agenda-title">${escapeHTML(row.title)}</span>
+            ${cls.state === 'airing' && cls.total
+              ? episodeBarHTML(cls, row, today)
+              : `<span class="agenda-label">${escapeHTML(statusText(cls, today))}</span>`}
+          </span>
+          ${pending ? `<span class="pending-badge">${escapeHTML(pending)}</span>` : ''}
+        </button>`;
+      }).join('');
+      const title = `${label} <span class="summary-count">${list.length}</span>`;
+      return key === 'ended'
+        ? `<details class="summary-group"><summary class="dialog-section-title upcoming-heading">${title}</summary>
+             <div class="agenda-list">${rows}</div></details>`
+        : `<div class="summary-group"><h3 class="dialog-section-title upcoming-heading">${title}</h3>
+             <div class="agenda-list">${rows}</div></div>`;
+    }).join('');
+}
+
+// Temporada en emisión como cuadrados: dorados los vistos (según "voy por"),
+// en el color de la plataforma los emitidos sin ver y vacíos los que faltan por emitir
+function episodeBarHTML(cls, row, today) {
+  const text = statusText(cls, today);
+  const seenUpTo = row.seen_season == null || row.seen_season < cls.season ? 0
+    : row.seen_season > cls.season ? cls.total
+    : row.seen_episode;
+  const squares = Array.from({ length: cls.total }, (_, i) => {
+    const state = i < Math.min(seenUpTo, cls.aired) ? 'seen' : i < cls.aired ? 'aired' : '';
+    return `<span class="ep-square ${state}"></span>`;
+  }).join('');
+  return `<span class="episode-bar" role="img" aria-label="${escapeHTML(text)}" title="${escapeHTML(text)}">
+      <span class="episode-bar-season">T${cls.season}</span>${squares}
+    </span>`;
+}
+
+function calendarHTML(drops, today) {
+  const month = state.calMonth ?? today.slice(0, 7);
+  const byDate = new Map();
+  for (const d of drops) {
+    if (!byDate.has(d.drop.airDate)) byDate.set(d.drop.airDate, []);
+    byDate.get(d.drop.airDate).push(d);
+  }
+  const selected = state.calDay?.startsWith(month) ? state.calDay
+    : today.startsWith(month) ? today : null;
+
+  const cells = monthGrid(month).map(({ iso, inMonth }) => {
+    const dayDrops = byDate.get(iso) || [];
+    // El final de temporada lleva una bandera (en móvil, un aro alrededor del punto)
+    const chips = dayDrops.map(({ drop, row }) => `
+      <button type="button" class="cal-chip ${drop.finale ? 'finale' : ''}" data-show="${row.tmdb_id}"
+              style="--platform-color: ${showColor(row)}"
+              title="${escapeHTML(`${row.title} · ${dropLabel(drop)}${drop.finale ? ' · final de temporada' : ''}`)}">
+        <span class="cal-chip-text">${escapeHTML(row.title)} <b>${escapeHTML(dropShortLabel(drop))}</b></span>
+        ${drop.finale ? '<span class="cal-finale" aria-label="final de temporada">⚑</span>' : ''}
+      </button>`).join('');
+    const classes = ['cal-day', inMonth ? '' : 'other-month', iso === today ? 'today' : '',
+      iso === selected ? 'selected' : '', dayDrops.length ? 'has-drops' : ''].filter(Boolean).join(' ');
+    return `
+      <div class="${classes}" data-date="${iso}" role="button" tabindex="0"
+           aria-label="${formatShortDate(iso)}${dayDrops.length ? `, ${dayDrops.length} lanzamientos` : ''}">
+        <span class="cal-num">${Number(iso.slice(8))}</span>
+        <div class="cal-chips">${chips}</div>
+      </div>`;
+  }).join('');
+
+  const dayList = selected
+    ? `<h3 class="dialog-section-title upcoming-heading">${formatShortDate(selected, today)}</h3>
+       ${(byDate.get(selected) || []).length
+         ? `<div class="agenda-list">${byDate.get(selected).map(d => agendaRowHTML(d, today)).join('')}</div>`
+         : '<p class="cal-empty">Nada este día.</p>'}`
+    : '';
+
+  return `
+    <div class="cal-nav">
+      <button type="button" class="view-btn" data-cal="prev" aria-label="Mes anterior">‹</button>
+      <h3 class="cal-title">${monthTitle(month)}</h3>
+      <button type="button" class="view-btn" data-cal="next" aria-label="Mes siguiente">›</button>
+      <button type="button" class="btn-logout" data-cal="today">Hoy</button>
+    </div>
+    <div class="cal-grid">
+      ${WEEKDAYS.map(d => `<span class="cal-weekday">${d}</span>`).join('')}
+      ${cells}
+    </div>
+    ${schedulesLoading && drops.length === 0 ? '<p class="cal-empty">Cargando calendario…</p>' : ''}
+    ${dayList}`;
+}
+
+// ---- Ficha de serie seguida ----
+let showDialogId = null;      // tmdb_id abierto
+let showDialogSeason = null;  // temporada que enseña la lista de capítulos
+
+function openShowDialog(tmdbId) {
+  const row = followedRow(tmdbId);
+  if (!row) return;
+  const show = state.schedules.get(tmdbId);
+  showDialogId = tmdbId;
+  showDialogSeason = row.seen_season ?? show?.lastAired?.season ?? show?.seasons.at(-1)?.number ?? null;
+  renderShowDialog();
+  if (!els.showDialog.open) els.showDialog.showModal();
+  ensureSeasonLoaded(tmdbId, showDialogSeason);
+}
+
+function renderShowDialog() {
+  if (showDialogId == null) return;  // cerrada
+  const row = followedRow(showDialogId);
+  if (!row) return;
+  const show = state.schedules.get(row.tmdb_id);
+  const today = todayISO();
+
+  const meta = show ? [show.network, STATUS_LABELS[show.status] ?? show.status].filter(Boolean) : [];
+  const header = `
+    <div class="show-header">
+      <div class="mini-poster" style="background-image: url('${row.poster_path ? posterURL(row.poster_path) : ''}')"></div>
+      <div class="show-heading">
+        <h2 class="detail-title">${escapeHTML(row.title)}</h2>
+        ${meta.length ? `<p class="detail-meta">${meta.map(escapeHTML).join(' · ')}</p>` : ''}
+        <div class="item-platforms">${platformTagsHTML(row.platforms)}</div>
+      </div>
+    </div>`;
+
+  if (!show) {
+    els.showBody.innerHTML = header + `<p class="detail-loading show-pad">${schedulesLoading
+      ? 'Cargando capítulos…' : 'No se pudieron cargar los datos de TMDB.'}</p>` + showActionsHTML(row);
+    return;
+  }
+
+  const pending = pendingCount(show, row.seen_season, row.seen_episode, today);
+  const pointer = row.seen_season != null
+    ? `Vas por <strong>T${row.seen_season}E${row.seen_episode}</strong> · ${pendingText(pending)}`
+    : 'Pulsa un capítulo emitido para fijar por dónde vas';
+
+  const seasonChips = show.seasons.map(s => `
+    <button type="button" class="chip ${s.number === showDialogSeason ? 'active' : ''}" data-season="${s.number}">
+      T${s.number}
+    </button>`).join('');
+
+  const episodes = show.episodes.filter(e => e.season === showDialogSeason);
+  let list;
+  if (!show.loaded.includes(showDialogSeason)) {
+    list = '<p class="detail-loading">Cargando capítulos…</p>';
+  } else if (episodes.length === 0) {
+    list = '<p class="detail-loading">TMDB aún no tiene los capítulos de esta temporada.</p>';
+  } else {
+    list = `<ol class="episode-list">${episodes.map(e => {
+      const aired = e.airDate && e.airDate <= today;
+      const seen = row.seen_season != null && (e.season < row.seen_season
+        || (e.season === row.seen_season && e.episode <= row.seen_episode));
+      const current = e.season === row.seen_season && e.episode === row.seen_episode;
+      const tag = e.type === 'finale' ? 'final' : e.type === 'mid_season' ? 'mitad de temporada' : '';
+      return `<li><button type="button" data-ep="${e.episode}" ${aired ? '' : 'disabled'}
+          class="episode-row ${aired ? 'aired' : 'future'} ${seen ? 'seen' : ''} ${current ? 'current' : ''}">
+        <span class="ep-num">E${e.episode}</span>
+        <span class="ep-name">${escapeHTML(e.name || `Capítulo ${e.episode}`)}${tag ? `<span class="drop-tag">${tag}</span>` : ''}</span>
+        <span class="ep-date">${e.airDate ? formatShortDate(e.airDate, today) : 'sin fecha'}</span>
+      </button></li>`;
+    }).join('')}</ol>`;
+  }
+
+  els.showBody.innerHTML = header + `
+    <div class="show-pad">
+      <p class="show-status">${escapeHTML(statusText(classifyShow(show, today), today))}</p>
+      <p class="show-pointer">${pointer}</p>
+      <div class="filter-group show-seasons">${seasonChips}</div>
+      ${list}
+    </div>` + showActionsHTML(row);
+}
+
+function showActionsHTML(row) {
+  return `
+    <div class="detail-actions">
+      ${row.seen_season != null ? '<button type="button" class="btn-ghost" data-action="clear-pointer">Quitar marca</button>' : ''}
+      <button type="button" class="btn-ghost btn-danger" data-action="unfollow">Dejar de seguir</button>
+    </div>`;
+}
+
 // ---- Búsqueda con debounce ----
 let searchTimeout;
 let searchController = null;  // cancela la búsqueda anterior para que no pise a la nueva
@@ -1131,6 +1693,7 @@ function onSearchInput() {
   if (!q) {
     els.searchResults.innerHTML = '';
     els.searchStatus.textContent = '';
+    lastResults = null;
     return;
   }
   els.searchStatus.textContent = '…';
@@ -1220,6 +1783,77 @@ function setupListeners() {
     } else if (action === 'watched') {
       toggleWatched(id).then(() => renderDetailActions(id));
       renderDetailActions(id);  // cambio optimista, igual que en la tarjeta
+    } else if (action === 'follow') {
+      const item = state.items.find(i => i.id === id);
+      if (!item) return;
+      const done = followedRow(item.tmdb_id) ? unfollowShow(item.tmdb_id) : followShow(item);
+      done.then(() => renderDetailActions(id));
+    }
+  });
+
+  // Pestañas
+  els.tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.tab = btn.dataset.tab;
+      savePrefs();
+      applyTab();
+    });
+  });
+
+  // Próximos
+  els.upcomingViews.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.upcomingView = btn.dataset.upcomingView;
+      savePrefs();
+      renderUpcoming();
+    });
+  });
+  els.upcomingRefresh.addEventListener('click', () => refreshSchedules(true));
+
+  els.upcomingBody.addEventListener('click', e => {
+    const showBtn = e.target.closest('[data-show]');
+    if (showBtn) return openShowDialog(Number(showBtn.dataset.show));
+    const nav = e.target.closest('[data-cal]')?.dataset.cal;
+    if (nav) {
+      const current = state.calMonth ?? todayISO().slice(0, 7);
+      state.calMonth = nav === 'today' ? null : shiftMonth(current, nav === 'next' ? 1 : -1);
+      state.calDay = null;
+      return renderUpcoming();
+    }
+    const day = e.target.closest('.cal-day');
+    if (day) selectCalendarDay(day.dataset.date);
+  });
+  // 'toggle' no burbujea: se escucha en fase de captura
+  els.upcomingBody.addEventListener('toggle', e => {
+    if (e.target.dataset?.group === 'later') laterOpen = e.target.open;
+  }, true);
+  els.upcomingBody.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const day = e.target.closest('.cal-day');
+    if (!day || e.target !== day) return;
+    e.preventDefault();
+    selectCalendarDay(day.dataset.date);
+  });
+
+  // Ficha de serie seguida
+  els.showClose.addEventListener('click', () => els.showDialog.close());
+  els.showDialog.addEventListener('close', () => { showDialogId = null; });
+  els.showDialog.addEventListener('click', e => {
+    if (e.target === els.showDialog) return els.showDialog.close();
+    const tmdbId = showDialogId;
+    if (tmdbId == null) return;
+    const seasonBtn = e.target.closest('[data-season]');
+    if (seasonBtn) {
+      showDialogSeason = Number(seasonBtn.dataset.season);
+      renderShowDialog();
+      return ensureSeasonLoaded(tmdbId, showDialogSeason);
+    }
+    const ep = e.target.closest('[data-ep]');
+    if (ep) return setSeenPointer(tmdbId, showDialogSeason, Number(ep.dataset.ep));
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'clear-pointer') setSeenPointer(tmdbId, null, null);
+    else if (action === 'unfollow') {
+      unfollowShow(tmdbId).then(ok => { if (ok) els.showDialog.close(); });
     }
   });
 
@@ -1294,6 +1928,27 @@ function escapeHTML(str) {
   })[c]);
 }
 
+// Mi lista (búsqueda + watchlist) o Próximos (búsqueda de series + calendario)
+function applyTab() {
+  const upcoming = state.tab === 'upcoming';
+  els.tabButtons.forEach(b => {
+    const on = b.dataset.tab === state.tab;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  els.watchlistSection.hidden = upcoming;
+  els.upcomingSection.hidden = !upcoming;
+  els.searchInput.placeholder = upcoming ? 'Busca una serie para seguirla…' : 'Busca una película o serie…';
+  if (lastResults) renderSearchResults(lastResults);
+}
+
+function selectCalendarDay(iso) {
+  state.calDay = iso;
+  // Un día gris (del mes anterior o siguiente) lleva a su mes
+  if (iso.slice(0, 7) !== (state.calMonth ?? todayISO().slice(0, 7))) state.calMonth = iso.slice(0, 7);
+  renderUpcoming();
+}
+
 function syncViewButtons() {
   els.viewButtons.forEach(b => b.classList.toggle('active', b.dataset.view === state.viewMode));
 }
@@ -1303,6 +1958,7 @@ function applyPrefsToUI() {
   els.sortSelect.value = state.sortBy;
   els.showWatched.checked = state.showWatched;
   syncViewButtons();
+  applyTab();
 }
 
 // ---- Arranque ----

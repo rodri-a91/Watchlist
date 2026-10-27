@@ -1145,6 +1145,329 @@ main {
   border: 0;
 }
 
+/* === Pestañas (Mi lista / Próximos) === */
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin: 0 auto 28px;
+  padding: 3px;
+  width: fit-content;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.tab-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  padding: 8px 22px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+.tab-btn svg { width: 22px; height: 22px; }
+.tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+/* === Próximos === */
+.upcoming-controls {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.upcoming-views .view-btn { font-family: inherit; font-size: 13px; padding: 6px 12px; }
+#upcoming-refresh:disabled { opacity: 0.6; cursor: default; }
+.upcoming-heading { margin: 26px 0 10px; }
+#upcoming-body > .upcoming-heading:first-child { margin-top: 0; }
+.summary-count { color: var(--text-dim); margin-left: 4px; }
+details.summary-group > summary { cursor: pointer; list-style-position: inside; }
+
+.agenda-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agenda-row,
+.summary-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--platform-color, var(--border));
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.agenda-row:hover,
+.summary-row:hover { border-color: var(--border-strong); border-left-color: var(--platform-color, var(--border-strong)); }
+.agenda-row.aired { opacity: 0.6; }
+.agenda-row.aired:hover { opacity: 1; }
+.upcoming-thumb {
+  width: 36px;
+  height: 54px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--surface-2) center / cover;
+}
+.agenda-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agenda-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agenda-label {
+  font-size: 13px;
+  line-height: 1.6;  /* deja sitio al borde de .drop-tag, que si no recorta el overflow */
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agenda-status {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.agenda-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.agenda-side .item-platforms { margin: 0; justify-content: flex-end; }
+.agenda-date {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+/* text-box recorta la caja a la altura de las mayúsculas (quita el hueco reservado
+   para los trazos que bajan de la línea): así el texto queda centrado entre los bordes */
+.drop-tag {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  display: inline-block;
+  line-height: 1;
+  text-box: trim-both cap alphabetic;
+  padding: 2px 4px;
+  margin-left: 6px;
+}
+.episode-bar {
+  display: flex;
+  flex-wrap: wrap;  /* temporadas largas pasan a una segunda línea */
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+}
+.episode-bar-season {
+  font-size: 13px;
+  margin-right: 5px;
+  line-height: 1;
+}
+.ep-square {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+}
+.ep-square.aired {
+  background: var(--platform-color, var(--text-muted));
+  border-color: var(--platform-color, var(--text-muted));
+}
+.ep-square.seen {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.pending-badge {
+  flex-shrink: 0;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Calendario */
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cal-nav .view-btn { font-size: 18px; padding: 2px 12px; border: 1px solid var(--border); }
+.cal-title {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  font-family: 'Fraunces', serif;
+  font-weight: 500;
+  font-size: 22px;
+  text-transform: capitalize;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cal-weekday {
+  text-align: center;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-bottom: 4px;
+}
+.cal-day {
+  min-height: 92px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cal-day.other-month { opacity: 0.4; }
+.cal-day.today .cal-num { background: var(--accent); color: var(--bg); }
+.cal-day.selected { border-color: var(--accent); }
+.cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cal-num {
+  align-self: flex-start;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cal-chip {
+  display: block;
+  width: 100%;
+  padding: 2px 5px;
+  border: 0;
+  border-left: 3px solid var(--platform-color);
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-chip b { color: var(--text-muted); font-weight: 500; }
+.cal-chip.finale { display: flex; align-items: center; gap: 4px; }
+.cal-chip.finale .cal-chip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cal-finale { color: var(--accent); flex-shrink: 0; font-size: 11px; line-height: 1; }
+.cal-chip:hover { background: var(--border); }
+.cal-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 13px;
+}
+
+/* Ficha de serie seguida */
+.show-dialog { max-width: 560px; }
+.show-content {
+  position: relative;
+  padding: 0;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.show-header {
+  display: flex;
+  gap: 14px;
+  padding: 24px 56px 8px 24px;
+}
+.show-header .mini-poster {
+  width: 64px;
+  height: 96px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--surface-2) center / cover;
+}
+.show-heading { min-width: 0; }
+.show-pad { padding: 8px 24px 0; }
+.show-status { margin: 0 0 4px; font-size: 14px; font-weight: 500; }
+.show-pointer { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
+.show-pointer strong { color: var(--accent); font-weight: 500; }
+.show-seasons { margin-bottom: 12px; }
+.show-seasons .chip { padding: 5px 12px; font-size: 12px; }
+.episode-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.episode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.episode-row:hover:not(:disabled) { border-color: var(--border-strong); }
+.episode-row.future { cursor: default; color: var(--text-muted); background: transparent; border-style: dashed; }
+.episode-row.seen { opacity: 0.5; }
+.episode-row.current { opacity: 1; border-color: var(--accent); background: var(--accent-soft); }
+.ep-num {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 30px;
+  flex-shrink: 0;
+}
+.ep-name { flex: 1; min-width: 0; }
+.ep-date {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.btn-danger:hover { color: var(--danger); }
+
 /* === Animations === */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -1201,4 +1524,29 @@ main {
     line-height: 1.3;
   }
   .watchlist-grid.list-view .item-platforms { flex-wrap: wrap; }
+
+  /* Próximos: en móvil las celdas del calendario solo llevan puntos;
+     al tocar el día, sus lanzamientos salen en la lista de debajo */
+  .tabs { margin-bottom: 20px; }
+  .cal-grid { gap: 2px; }
+  .cal-day { min-height: 48px; padding: 3px; align-items: center; }
+  .cal-num { align-self: center; }
+  .cal-chips { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 3px; }
+  .cal-chip {
+    width: 7px;
+    height: 7px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--platform-color);
+    pointer-events: none;
+  }
+  .cal-chip-text,
+  .cal-finale { display: none; }
+  .cal-chip.finale { display: block; box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--accent); }
+  .agenda-side .item-platforms { display: none; }
+  .episode-bar { gap: 2px; }
+  .ep-square { width: 7px; height: 7px; }
+  .show-header { padding: 20px 52px 8px 16px; }
+  .show-pad { padding: 8px 16px 0; }
 }
