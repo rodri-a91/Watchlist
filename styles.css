@@ -27,9 +27,42 @@
   --p-plex: #f4a80e;
   --p-filmin: #02ffa3;
 
+  --on-accent: #0d0c0a;                  /* texto sobre fondos dorados */
+  --backdrop: rgba(8, 7, 6, 0.7);        /* velo tras los diálogos */
+  --close-bg: rgba(13, 12, 10, 0.6);     /* botón × sobre la imagen de la ficha */
+
   --radius: 10px;
   --radius-lg: 14px;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;  /* controles nativos (select, scroll) a juego */
+}
+
+/* Modo claro. data-theme lo pone el script del <head>: el tema elegido con el botón
+   o, si no hay ninguno, el del sistema. Las capas oscuras sobre pósters no cambian. */
+:root[data-theme="light"] {
+  --bg: #f6f1e7;
+  --bg-elevated: #fbf8f2;
+  --surface: #ffffff;
+  --surface-2: #f1ebdf;
+  --border: #e3dacb;
+  --border-strong: #cbbfa9;
+  --text: #1f1a14;
+  --text-muted: #6e6355;
+  --text-dim: #a0947f;
+  --accent: #a87412;                     /* dorado más oscuro: legible sobre claro */
+  --accent-soft: rgba(168, 116, 18, 0.12);
+  --danger: #b8402f;
+
+  /* las que no se leen sobre blanco */
+  --p-apple: #555555;
+  --p-plex: #d98e00;
+  --p-filmin: #00a070;
+
+  --on-accent: #ffffff;
+  --backdrop: rgba(60, 50, 35, 0.35);
+  --close-bg: rgba(255, 255, 255, 0.75);
+  --shadow: 0 10px 30px rgba(60, 40, 10, 0.15);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -682,7 +715,7 @@ main {
   width: calc(100% - 32px);
 }
 .dialog::backdrop {
-  background: rgba(8, 7, 6, 0.7);
+  background: var(--backdrop);
   backdrop-filter: blur(4px);
 }
 .dialog-content {
@@ -916,7 +949,7 @@ main {
 .btn-ghost:hover { color: var(--text); }
 .btn-primary {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
 }
 .btn-primary:hover { filter: brightness(1.1); }
 
@@ -953,6 +986,12 @@ main {
   color: var(--text);
   border-color: var(--border-strong);
 }
+.theme-btn {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+}
+.theme-btn svg { width: 15px; height: 15px; }
 
 /* === Login screen === */
 .login-section {
@@ -1049,7 +1088,7 @@ main {
   top: 10px;
   right: 10px;
   z-index: 1;
-  background: rgba(13, 12, 10, 0.6);
+  background: var(--close-bg);
   border-radius: 50%;
   width: 36px;
   height: 36px;
@@ -1353,7 +1392,7 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
   min-width: 0;
 }
 .cal-day.other-month { opacity: 0.4; }
-.cal-day.today .cal-num { background: var(--accent); color: var(--bg); }
+.cal-day.today .cal-num { background: var(--accent); color: var(--on-accent); }
 .cal-day.selected { border-color: var(--accent); }
 .cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cal-num {

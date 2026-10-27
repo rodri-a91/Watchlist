@@ -332,6 +332,7 @@ const els = {
   userBar:          $('user-bar'),
   userEmail:        $('user-email'),
   logoutBtn:        $('logout-btn'),
+  themeBtn:         $('theme-btn'),
 };
 
 // ---- Render: chips de plataformas para filtrar ----
@@ -1961,7 +1962,52 @@ function applyPrefsToUI() {
   applyTab();
 }
 
+// ---- Tema claro / oscuro ----
+// El script del <head> ya ha puesto data-theme. El botón cambia al tema contrario; si ese
+// coincide con el del sistema, se borra la elección y la app vuelve a seguir al sistema.
+const THEME_KEY = 'watchlist:theme';
+const systemLight = matchMedia('(prefers-color-scheme: light)');
+const systemTheme = () => (systemLight.matches ? 'light' : 'dark');
+const SUN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+  <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>`;
+const MOON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+  <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></svg>`;
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try {
+    if (theme === systemTheme()) localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, theme);
+  } catch {}
+  syncThemeUI();
+}
+
+function syncThemeUI() {
+  const light = document.documentElement.dataset.theme === 'light';
+  // El icono es el del tema al que se cambia
+  els.themeBtn.innerHTML = light ? MOON_ICON : SUN_ICON;
+  const label = light ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro';
+  els.themeBtn.title = label;
+  els.themeBtn.setAttribute('aria-label', label);
+  // Color de la barra del navegador / del sistema en el móvil
+  document.querySelector('meta[name="theme-color"]')
+    .setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
+}
+
+function setupTheme() {
+  els.themeBtn.addEventListener('click', () =>
+    setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'));
+  // Si no hay tema elegido, seguir los cambios del sistema en directo
+  systemLight.addEventListener('change', () => {
+    let chosen = null;
+    try { chosen = localStorage.getItem(THEME_KEY); } catch {}
+    if (!chosen) setTheme(systemTheme());
+  });
+  syncThemeUI();
+}
+
 // ---- Arranque ----
+setupTheme();
 loadPrefs();
 applyPrefsToUI();
 renderPlatformFilters();
