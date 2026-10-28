@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   todayISO, addDays, formatShortDate, monthGrid, shiftMonth, monthTitle,
   seasonsToFetch, normalizeShow, mergeSeason, groupDrops, dropLabel, dropShortLabel,
-  bucketFor, classifyShow, pendingCount, statusText, pendingText,
+  bucketFor, classifyShow, pendingCount, statusText, pendingText, isDropSeen,
 } from '../schedule.js';
 
 const TODAY = '2026-10-27';  // martes
@@ -192,6 +192,17 @@ test('classifyShow: renovada sin fecha', () => {
 test('classifyShow: finalizada', () => {
   const show = normalizeShow(details({ status: 'Ended', seasons: [[1, '2020-01-01', 8]], last: [1, 8, '2020-03-01'], next: null }));
   assert.deepEqual(classifyShow(show, TODAY), { state: 'ended' });
+});
+
+test('isDropSeen: visto solo si el puntero cubre el lanzamiento entero', () => {
+  const drop = { season: 3, from: 5, to: 6 };  // E5–E6 el mismo día
+  assert.equal(isDropSeen(drop, null, null), false);
+  assert.equal(isDropSeen(drop, 3, 4), false);
+  assert.equal(isDropSeen(drop, 3, 5), false);  // a mitad: falta E6
+  assert.equal(isDropSeen(drop, 3, 6), true);
+  assert.equal(isDropSeen(drop, 4, 1), true);   // ya en la temporada siguiente
+  assert.equal(isDropSeen(drop, 2, 10), false);
+  assert.equal(isDropSeen({ season: 4, from: 1, to: null }, 4, 3), false);  // estreno sin capítulos fechados
 });
 
 test('pendingCount: sin puntero, a mitad y al día', () => {

@@ -1252,8 +1252,8 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
 }
 .agenda-row:hover,
 .summary-row:hover { border-color: var(--border-strong); border-left-color: var(--platform-color, var(--border-strong)); }
-.agenda-row.aired { opacity: 0.6; }
-.agenda-row.aired:hover { opacity: 1; }
+.agenda-row.seen { opacity: 0.6; }
+.agenda-row.seen:hover { opacity: 1; }
 .upcoming-thumb {
   width: 36px;
   height: 54px;
@@ -1431,6 +1431,8 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
 .cal-chip.finale .cal-chip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cal-finale { color: var(--accent); flex-shrink: 0; font-size: 11px; line-height: 1; }
 .cal-chip:hover { background: var(--border); }
+.cal-chip.seen { opacity: 0.6; }
+.cal-chip.seen:hover { opacity: 1; }
 .cal-empty {
   color: var(--text-muted);
   font-style: italic;

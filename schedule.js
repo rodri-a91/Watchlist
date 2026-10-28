@@ -260,6 +260,13 @@ export function classifyShow(show, today) {
   return { state: 'waiting' };
 }
 
+// Si el "voy por" cubre todos los capítulos del lanzamiento (si cae a mitad, aún queda algo por ver)
+export function isDropSeen(drop, seenSeason, seenEpisode) {
+  if (seenSeason == null) return false;
+  if (seenSeason !== drop.season) return seenSeason > drop.season;
+  return drop.to != null && seenEpisode >= drop.to;
+}
+
 // Capítulos ya emitidos después del puntero "voy por". null si no hay puntero.
 export function pendingCount(show, seenSeason, seenEpisode, today) {
   if (seenSeason == null) return null;

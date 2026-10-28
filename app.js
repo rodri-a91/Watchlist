@@ -7,7 +7,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, TMDB_API_KEY } from './config.js';
 import {
   todayISO, formatShortDate, monthGrid, shiftMonth, monthTitle, seasonsToFetch,
   normalizeShow, mergeSeason, groupDrops, dropLabel, dropShortLabel, bucketFor,
-  classifyShow, pendingCount, statusText, pendingText, airedInSeason, STATUS_LABELS,
+  classifyShow, pendingCount, statusText, pendingText, airedInSeason, isDropSeen, STATUS_LABELS,
 } from './schedule.js';
 
 // ---- Configuración de plataformas ----
@@ -1441,7 +1441,7 @@ function agendaRowHTML({ drop, row, show }, today) {
     .filter(Boolean).map(t => `<span class="drop-tag">${t}</span>`).join('');
   const status = rowStatus(row, show, today);
   return `
-    <button type="button" class="agenda-row ${drop.airDate <= today ? 'aired' : ''}"
+    <button type="button" class="agenda-row ${isDropSeen(drop, row.seen_season, row.seen_episode) ? 'seen' : ''}"
             data-show="${row.tmdb_id}" style="--platform-color: ${showColor(row)}">
       ${thumbHTML(row)}
       <span class="agenda-main">
@@ -1574,7 +1574,7 @@ function calendarHTML(drops, today) {
     const dayDrops = byDate.get(iso) || [];
     // El final de temporada lleva una bandera (en móvil, un aro alrededor del punto)
     const chips = dayDrops.map(({ drop, row }) => `
-      <button type="button" class="cal-chip ${drop.finale ? 'finale' : ''}" data-show="${row.tmdb_id}"
+      <button type="button" class="cal-chip ${drop.finale ? 'finale' : ''} ${isDropSeen(drop, row.seen_season, row.seen_episode) ? 'seen' : ''}" data-show="${row.tmdb_id}"
               style="--platform-color: ${showColor(row)}"
               title="${escapeHTML(`${row.title} · ${dropLabel(drop)}${drop.finale ? ' · final de temporada' : ''}`)}">
         <span class="cal-chip-text">${escapeHTML(row.title)} <b>${escapeHTML(dropShortLabel(drop))}</b></span>
