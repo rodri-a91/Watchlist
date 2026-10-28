@@ -221,7 +221,7 @@ export const STATUS_LABELS = {
 
 // Último capítulo emitido de una temporada (su número), con los capítulos cargados
 // si los hay y, si no, con lo que dice la ficha de la serie.
-function airedInSeason(show, season, today) {
+export function airedInSeason(show, season, today) {
   if (show.loaded.includes(season.number)) {
     return show.episodes
       .filter(e => e.season === season.number && e.airDate && e.airDate <= today)

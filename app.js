@@ -7,7 +7,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, TMDB_API_KEY } from './config.js';
 import {
   todayISO, formatShortDate, monthGrid, shiftMonth, monthTitle, seasonsToFetch,
   normalizeShow, mergeSeason, groupDrops, dropLabel, dropShortLabel, bucketFor,
-  classifyShow, pendingCount, statusText, pendingText, STATUS_LABELS,
+  classifyShow, pendingCount, statusText, pendingText, airedInSeason, STATUS_LABELS,
 } from './schedule.js';
 
 // ---- Configuración de plataformas ----
@@ -1505,15 +1505,16 @@ function summaryHTML(entries, today) {
       const list = groups.get(key);
       const rows = list.map(({ row, show, cls }) => {
         const pending = show && pendingText(pendingCount(show, row.seen_season, row.seen_episode, today));
+        const bar = barFor(cls, row, show, today);
         return `
         <button type="button" class="summary-row" data-show="${row.tmdb_id}"
                 style="--platform-color: ${showColor(row)}">
           ${thumbHTML(row)}
           <span class="agenda-main">
             <span class="agenda-title">${escapeHTML(row.title)}</span>
-            ${barFor(cls, row, show)
-              ? episodeBarHTML(barFor(cls, row, show), row, barLabel(cls, row, today))
+            ${bar && cls.state !== 'premiere' && cls.state !== 'waiting' ? ''
               : `<span class="agenda-label">${escapeHTML(statusText(cls, today))}</span>`}
+            ${bar ? episodeBarHTML(bar, row, barLabel(cls, row, today)) : ''}
           </span>
           ${pending ? `<span class="pending-badge">${escapeHTML(pending)}</span>` : ''}
         </button>`;
@@ -1529,19 +1530,21 @@ function summaryHTML(entries, today) {
 
 // Temporada en emisión como cuadrados: dorados los vistos (según "voy por"),
 // en el color de la plataforma los emitidos sin ver y vacíos los que faltan por emitir
-// Qué temporada pintar como cuadrados, o null para dejar el texto:
-// en emisión, la temporada en curso; finalizada, la del "voy por" (ya emitida entera)
-function barFor(cls, row, show) {
+// Qué temporada pintar como cuadrados, o null para dejar solo el texto:
+// en emisión, la temporada en curso; en el resto, la del "voy por"
+// (en estrenos y renovadas el texto se queda encima porque lleva la fecha)
+function barFor(cls, row, show, today) {
   if (cls.state === 'airing') return cls.total ? cls : null;
-  if (cls.state !== 'ended' || row.seen_season == null) return null;
-  const total = show.seasons.find(s => s.number === row.seen_season)?.episodeCount;
-  return total ? { season: row.seen_season, aired: total, total } : null;
+  if (cls.state === 'unknown' || row.seen_season == null) return null;
+  const season = show.seasons.find(s => s.number === row.seen_season);
+  if (!season?.episodeCount) return null;
+  return { season: season.number, aired: airedInSeason(show, season, today), total: season.episodeCount };
 }
 
 function barLabel(cls, row, today) {
-  return cls.state === 'ended'
-    ? `Finalizada · vas por T${row.seen_season}E${row.seen_episode}`
-    : statusText(cls, today);
+  return cls.state === 'airing'
+    ? statusText(cls, today)
+    : `${statusText(cls, today)} · vas por T${row.seen_season}E${row.seen_episode}`;
 }
 
 function episodeBarHTML(cls, row, text) {
