@@ -1498,6 +1498,16 @@ function summaryHTML(entries, today) {
     groups.get(cls.state).push({ row, show, cls });
   }
   groups.get('premiere')?.sort((a, b) => a.cls.airDate.localeCompare(b.cls.airDate));
+  // Renovadas y finalizadas: primero las que tienen menos capítulos pendientes,
+  // luego las no empezadas (sin "voy por") y al final las que estoy al día
+  const pendingOf = ({ row, show }) => pendingCount(show, row.seen_season, row.seen_episode, today);
+  const tier = n => n == null ? 1 : n === 0 ? 2 : 0;
+  const byPending = (a, b) => {
+    const pa = pendingOf(a), pb = pendingOf(b);
+    return tier(pa) - tier(pb) || (pa ?? 0) - (pb ?? 0);
+  };
+  groups.get('waiting')?.sort(byPending);
+  groups.get('ended')?.sort(byPending);
 
   return SUMMARY_GROUPS
     .filter(([key]) => groups.has(key))
