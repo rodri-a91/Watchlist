@@ -1390,8 +1390,8 @@ const SUMMARY_GROUPS = [
   ['ended', 'Finalizadas'],
 ];
 const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-// Si "Más adelante" está desplegado; se conserva entre re-renders (marcar "voy por", Actualizar…)
-let laterOpen = false;
+// Desplegables abiertos ("Más adelante", "Finalizadas"); se conservan entre re-renders (marcar "voy por", Actualizar…)
+const openGroups = new Set();
 
 function renderUpcoming() {
   els.upcomingViews.forEach(b => b.classList.toggle('active', b.dataset.upcomingView === state.upcomingView));
@@ -1473,7 +1473,7 @@ function agendaHTML(entries, drops, today) {
         .map(d => agendaRowHTML(d, today)).join('')}</div>`;
       // "Más adelante" crece mucho con muchas series: va plegado
       if (key === 'later') {
-        return `<details class="summary-group" data-group="later" ${laterOpen ? 'open' : ''}>
+        return `<details class="summary-group" data-group="later" ${openGroups.has('later') ? 'open' : ''}>
           <summary class="dialog-section-title upcoming-heading">${label}
             <span class="summary-count">${list.length}</span></summary>${rows}</details>`;
       }
@@ -1520,7 +1520,7 @@ function summaryHTML(entries, today) {
       }).join('');
       const title = `${label} <span class="summary-count">${list.length}</span>`;
       return key === 'ended'
-        ? `<details class="summary-group"><summary class="dialog-section-title upcoming-heading">${title}</summary>
+        ? `<details class="summary-group" data-group="ended" ${openGroups.has('ended') ? 'open' : ''}><summary class="dialog-section-title upcoming-heading">${title}</summary>
              <div class="agenda-list">${rows}</div></details>`
         : `<div class="summary-group"><h3 class="dialog-section-title upcoming-heading">${title}</h3>
              <div class="agenda-list">${rows}</div></div>`;
@@ -1840,7 +1840,8 @@ function setupListeners() {
   });
   // 'toggle' no burbujea: se escucha en fase de captura
   els.upcomingBody.addEventListener('toggle', e => {
-    if (e.target.dataset?.group === 'later') laterOpen = e.target.open;
+    const group = e.target.dataset?.group;
+    if (group) openGroups[e.target.open ? 'add' : 'delete'](group);
   }, true);
   els.upcomingBody.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
