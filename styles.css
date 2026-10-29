@@ -1509,6 +1509,58 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
 }
 .btn-danger:hover { color: var(--danger); }
 
+/* Póster y título de la hoja abren la ficha completa */
+.show-info-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.show-header .mini-poster.show-info-link { background: var(--surface-2) center / cover; }
+.show-info-arrow { color: var(--text-muted); font-family: 'Geist', sans-serif; font-weight: 400; }
+.show-info-link:hover .show-info-arrow { color: var(--accent); }
+
+/* Ficha completa: reutiliza .detail-hero de Mi lista */
+.show-back {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  background: var(--close-bg);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+}
+#show-info-extra { padding-bottom: 24px; }
+.nowrap { white-space: nowrap; }
+#show-info-extra .dialog-section-title { margin-top: 18px; }
+.show-season-overview { margin-bottom: 12px; font-size: 13px; color: var(--text-muted); }
+.ep-info summary { list-style: none; }
+.ep-info summary::-webkit-details-marker { display: none; }
+.ep-info[open] summary { border-color: var(--border-strong); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.ep-info-body {
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+}
+.ep-info-body .detail-overview { font-size: 13px; }
+.ep-still {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  background: var(--surface-2);
+}
+
 /* === Animations === */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }

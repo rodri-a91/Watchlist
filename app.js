@@ -602,7 +602,8 @@ function detailHeaderHTML(item) {
     </div>`;
 }
 
-function detailExtraHTML(item, details, season) {
+// withTrailer=false: la ficha de serie seguida pone el tráiler después de las temporadas
+function detailExtraHTML(item, details, season, withTrailer = true) {
   const parts = [];
 
   if (details.vote_count > 0) {
@@ -634,19 +635,22 @@ function detailExtraHTML(item, details, season) {
       <p class="detail-people">${cast.map(c => escapeHTML(c.name)).join(', ')}</p>`);
   }
 
-  const trailerKey = findTrailer(details);
-  if (trailerKey) {
-    // youtube-nocookie: no deja cookies hasta que se da a reproducir.
-    // YouTube rechaza embeds sin Referer, de ahí el referrerpolicy.
-    parts.push(`<h3 class="dialog-section-title">Tráiler</h3>
-      <div class="detail-trailer">
-        <iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailerKey)}?rel=0"
-          title="Tráiler de ${escapeHTML(item.title)}" loading="lazy"
-          referrerpolicy="strict-origin-when-cross-origin"
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
-      </div>`);
-  }
+  if (withTrailer) parts.push(trailerHTML(item.title, details));
   return parts.join('');
+}
+
+function trailerHTML(title, details) {
+  const trailerKey = findTrailer(details);
+  if (!trailerKey) return '';
+  // youtube-nocookie: no deja cookies hasta que se da a reproducir.
+  // YouTube rechaza embeds sin Referer, de ahí el referrerpolicy.
+  return `<h3 class="dialog-section-title">Tráiler</h3>
+    <div class="detail-trailer">
+      <iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailerKey)}?rel=0"
+        title="Tráiler de ${escapeHTML(title)}" loading="lazy"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+    </div>`;
 }
 
 // Tráiler de YouTube: preferimos en español y oficial
@@ -1625,12 +1629,15 @@ function calendarHTML(drops, today) {
 // ---- Ficha de serie seguida ----
 let showDialogId = null;      // tmdb_id abierto
 let showDialogSeason = null;  // temporada que enseña la lista de capítulos
+let showDialogView = 'pointer';  // 'pointer' (fijar "voy por") | 'info' (ficha completa)
+let showInfoSeason = null;    // temporada que enseña la ficha completa
 
 function openShowDialog(tmdbId) {
   const row = followedRow(tmdbId);
   if (!row) return;
   const show = state.schedules.get(tmdbId);
   showDialogId = tmdbId;
+  showDialogView = 'pointer';
   showDialogSeason = row.seen_season ?? show?.lastAired?.season ?? show?.seasons.at(-1)?.number ?? null;
   renderShowDialog();
   if (!els.showDialog.open) els.showDialog.showModal();
@@ -1638,18 +1645,21 @@ function openShowDialog(tmdbId) {
 }
 
 function renderShowDialog() {
-  if (showDialogId == null) return;  // cerrada
+  if (showDialogId == null || showDialogView !== 'pointer') return;  // cerrada o en la ficha completa
   const row = followedRow(showDialogId);
   if (!row) return;
   const show = state.schedules.get(row.tmdb_id);
   const today = todayISO();
 
+  // Póster y título abren la ficha completa
   const meta = show ? [show.network, STATUS_LABELS[show.status] ?? show.status].filter(Boolean) : [];
   const header = `
     <div class="show-header">
-      <div class="mini-poster" style="background-image: url('${row.poster_path ? posterURL(row.poster_path) : ''}')"></div>
+      <button type="button" class="mini-poster show-info-link" data-action="info" tabindex="-1" aria-hidden="true"
+        style="background-image: url('${row.poster_path ? posterURL(row.poster_path) : ''}')"></button>
       <div class="show-heading">
-        <h2 class="detail-title">${escapeHTML(row.title)}</h2>
+        <h2 class="detail-title"><button type="button" class="show-info-link" data-action="info"
+          aria-label="Ver la ficha de ${escapeHTML(row.title)}">${escapeHTML(row.title)} <span class="show-info-arrow">›</span></button></h2>
         ${meta.length ? `<p class="detail-meta">${meta.map(escapeHTML).join(' · ')}</p>` : ''}
         <div class="item-platforms">${platformTagsHTML(row.platforms)}</div>
       </div>
@@ -1708,6 +1718,135 @@ function showActionsHTML(row) {
       ${row.seen_season != null ? '<button type="button" class="btn-ghost" data-action="clear-pointer">Quitar marca</button>' : ''}
       <button type="button" class="btn-ghost btn-danger" data-action="unfollow">Dejar de seguir</button>
     </div>`;
+}
+
+// ---- Ficha completa de serie seguida (misma hoja, con ← para volver) ----
+// Sinopsis y fotos de los capítulos no van a la caché de localStorage: se piden al abrir
+const seasonInfoCache = new Map();
+function fetchSeasonInfo(tmdbId, seasonNumber) {
+  const key = `${tmdbId}:${seasonNumber}`;
+  if (!seasonInfoCache.has(key)) {
+    const p = tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber));
+    p.catch(() => seasonInfoCache.delete(key));
+    seasonInfoCache.set(key, p);
+  }
+  return seasonInfoCache.get(key);
+}
+
+function setShowView(view) {
+  showDialogView = view;
+  els.showDialog.querySelector('.show-content').scrollTop = 0;
+  if (view === 'info') {
+    showInfoSeason = showDialogSeason;
+    renderShowInfo();
+  } else {
+    renderShowDialog();
+  }
+}
+
+async function renderShowInfo() {
+  const tmdbId = showDialogId;
+  const row = followedRow(tmdbId);
+  if (!row) return;
+  const stillCurrent = () => showDialogId === tmdbId && showDialogView === 'info';
+
+  els.showBody.innerHTML = `
+    <button type="button" class="dialog-close show-back" data-action="back" aria-label="Volver">←</button>
+    ${detailHeaderHTML({ ...row, type: 'tv', year: null, genres: [] })}
+    <div id="show-info-extra" class="show-pad"><p class="detail-loading">Cargando ficha…</p></div>`;
+
+  let details;
+  try {
+    details = await fetchFullDetails('tv', tmdbId);
+  } catch (err) {
+    console.error(err);
+    if (stillCurrent()) $('show-info-extra').innerHTML = '<p class="detail-loading">No se pudo cargar la ficha de TMDB.</p>';
+    return;
+  }
+  if (!stillCurrent()) return;  // se cerró o se volvió atrás mientras tanto
+
+  if (details.backdrop_path) {
+    els.showBody.querySelector('.detail-hero').style.backgroundImage =
+      `url('${escapeHTML(TMDB_BACKDROP + details.backdrop_path)}')`;
+  }
+  // Cada dato en un span que no se parte: "5 temporadas" nunca queda en dos líneas
+  els.showBody.querySelector('.detail-meta').innerHTML =
+    showInfoMeta(details).map(m => `<span class="nowrap">${escapeHTML(m)}</span>`).join(' · ');
+
+  const seasons = (details.seasons || []).filter(s => s.season_number > 0);
+  if (showInfoSeason == null || !seasons.some(s => s.season_number === showInfoSeason)) {
+    showInfoSeason = seasons.at(-1)?.season_number ?? null;
+  }
+  const seasonChips = seasons.map(s => `
+    <button type="button" class="chip ${s.season_number === showInfoSeason ? 'active' : ''}" data-info-season="${s.season_number}">
+      T${s.season_number}
+    </button>`).join('');
+
+  $('show-info-extra').innerHTML = detailExtraHTML({ type: 'tv', title: row.title, season_number: null }, details, null, false)
+    + (seasons.length ? `
+      <h3 class="dialog-section-title">Temporadas</h3>
+      <div class="filter-group show-seasons">${seasonChips}</div>
+      <div id="show-info-season"><p class="detail-loading">Cargando capítulos…</p></div>` : '')
+    + trailerHTML(row.title, details);
+  if (showInfoSeason != null) renderShowInfoSeason();
+}
+
+// Años, temporadas, capítulos y duración típica: "2019–2023 · 4 temporadas · 36 capítulos · ~50min"
+function showInfoMeta(details) {
+  const first = details.first_air_date?.slice(0, 4);
+  const last = details.last_air_date?.slice(0, 4);
+  const ended = details.status === 'Ended' || details.status === 'Canceled';
+  const meta = ['Serie'];
+  if (first) meta.push(!ended ? `${first}–` : last && last !== first ? `${first}–${last}` : first);
+  if (details.number_of_seasons) {
+    meta.push(`${details.number_of_seasons} ${details.number_of_seasons === 1 ? 'temporada' : 'temporadas'}`);
+  }
+  if (details.number_of_episodes) meta.push(formatEpisodes(details.number_of_episodes, true));
+  const runtime = details.episode_run_time?.[0];
+  if (runtime) meta.push(formatDuration(runtime, true));
+  return meta;
+}
+
+async function renderShowInfoSeason() {
+  const tmdbId = showDialogId;
+  const number = showInfoSeason;
+  let season;
+  try {
+    season = await fetchSeasonInfo(tmdbId, number);
+  } catch (err) {
+    console.error(err);
+    season = null;
+  }
+  const box = $('show-info-season');
+  if (!box || showDialogId !== tmdbId || showDialogView !== 'info' || showInfoSeason !== number) return;
+  if (!season) {
+    box.innerHTML = '<p class="detail-loading">No se pudieron cargar los capítulos.</p>';
+    return;
+  }
+
+  const today = todayISO();
+  const overview = season.overview?.trim();
+  const episodes = season.episodes || [];
+  // Cada capítulo se despliega con <details>: sinopsis, duración y fotograma
+  const list = episodes.length === 0
+    ? '<p class="detail-loading">TMDB aún no tiene los capítulos de esta temporada.</p>'
+    : `<ol class="episode-list">${episodes.map(e => {
+      const epOverview = e.overview?.trim();
+      return `<li><details class="ep-info">
+        <summary class="episode-row">
+          <span class="ep-num">E${e.episode_number}</span>
+          <span class="ep-name">${escapeHTML(e.name || `Capítulo ${e.episode_number}`)}</span>
+          <span class="ep-date">${e.air_date ? formatShortDate(e.air_date, today) : 'sin fecha'}</span>
+        </summary>
+        <div class="ep-info-body">
+          ${e.still_path ? `<img class="ep-still" src="${escapeHTML(TMDB_IMG + e.still_path)}" alt="" loading="lazy">` : ''}
+          ${e.runtime ? `<p class="detail-meta">${e.runtime} min</p>` : ''}
+          <p class="detail-overview">${epOverview ? escapeHTML(epOverview) : '<em>Sin sinopsis en español.</em>'}</p>
+        </div>
+      </details></li>`;
+    }).join('')}</ol>`;
+
+  box.innerHTML = (overview ? `<p class="detail-overview show-season-overview">${escapeHTML(overview)}</p>` : '') + list;
 }
 
 // ---- Búsqueda con debounce ----
@@ -1871,6 +2010,14 @@ function setupListeners() {
     if (e.target === els.showDialog) return els.showDialog.close();
     const tmdbId = showDialogId;
     if (tmdbId == null) return;
+    const infoSeasonBtn = e.target.closest('[data-info-season]');
+    if (infoSeasonBtn) {
+      showInfoSeason = Number(infoSeasonBtn.dataset.infoSeason);
+      els.showBody.querySelectorAll('[data-info-season]').forEach(b =>
+        b.classList.toggle('active', b === infoSeasonBtn));
+      $('show-info-season').innerHTML = '<p class="detail-loading">Cargando capítulos…</p>';
+      return renderShowInfoSeason();
+    }
     const seasonBtn = e.target.closest('[data-season]');
     if (seasonBtn) {
       showDialogSeason = Number(seasonBtn.dataset.season);
@@ -1880,7 +2027,9 @@ function setupListeners() {
     const ep = e.target.closest('[data-ep]');
     if (ep) return setSeenPointer(tmdbId, showDialogSeason, Number(ep.dataset.ep));
     const action = e.target.closest('[data-action]')?.dataset.action;
-    if (action === 'clear-pointer') setSeenPointer(tmdbId, null, null);
+    if (action === 'info') setShowView('info');
+    else if (action === 'back') setShowView('pointer');
+    else if (action === 'clear-pointer') setSeenPointer(tmdbId, null, null);
     else if (action === 'unfollow') {
       unfollowShow(tmdbId).then(ok => { if (ok) els.showDialog.close(); });
     }
