@@ -1679,7 +1679,7 @@ function renderShowDialog() {
   const pending = pendingCount(show, row.seen_season, row.seen_episode, today);
   const pointer = row.seen_season != null
     ? `Vas por <strong>T${row.seen_season}E${row.seen_episode}</strong> · ${pendingText(pending)}`
-    : 'Pulsa un capítulo emitido para fijar por dónde vas';
+    : '';
 
   const seasonChips = show.seasons.map(s => `
     <button type="button" class="chip ${s.number === showDialogSeason ? 'active' : ''}" data-season="${s.number}">
@@ -1711,7 +1711,7 @@ function renderShowDialog() {
   els.showBody.innerHTML = header + `
     <div class="show-pad">
       <p class="show-status">${escapeHTML(statusText(classifyShow(show, today), today))}</p>
-      <p class="show-pointer">${pointer}</p>
+      ${pointer ? `<p class="show-pointer">${pointer}</p>` : ''}
       <div class="filter-group show-seasons">${seasonChips}</div>
       ${list}
     </div>` + showActionsHTML(row);

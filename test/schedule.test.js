@@ -174,7 +174,7 @@ test('bucketFor: bloques de la agenda', () => {
 test('classifyShow: semanal en emisión, contando con los capítulos cargados', () => {
   const cls = classifyShow(weeklyShow, TODAY);
   assert.deepEqual(cls, { state: 'airing', season: 3, aired: 7, total: 10, remaining: 3 });
-  assert.equal(statusText(cls, TODAY), 'T3 · va por E7 de 10 · quedan 3');
+  assert.equal(statusText(cls, TODAY), 'T3 · 7/10 episodios');
 });
 
 test('classifyShow: nueva temporada con fecha', () => {

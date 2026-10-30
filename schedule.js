@@ -279,13 +279,12 @@ export function pendingCount(show, seenSeason, seenEpisode, today) {
   return total;
 }
 
-// "va por E5 de 8 · quedan 3", "T3 · 12 mar", "Renovada, sin fecha", "Finalizada"
+// "T1 · 5/8 episodios", "T3 · 12 mar", "Renovada, sin fecha", "Finalizada"
 export function statusText(cls, today) {
   switch (cls.state) {
     case 'airing': {
-      const of = cls.total ? ` de ${cls.total}` : '';
-      const left = cls.remaining ? ` · quedan ${cls.remaining}` : '';
-      return `T${cls.season} · va por E${cls.aired}${of}${left}`;
+      if (cls.total) return `T${cls.season} · ${cls.aired}/${cls.total} episodios`;
+      return `T${cls.season} · ${cls.aired} ${cls.aired === 1 ? 'episodio' : 'episodios'}`;
     }
     case 'premiere': return `T${cls.season} · ${formatShortDate(cls.airDate, today)}`;
     case 'waiting':  return 'Renovada, sin fecha';
