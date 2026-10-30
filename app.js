@@ -1839,7 +1839,7 @@ async function renderShowInfoSeason() {
           <span class="ep-date">${e.air_date ? formatShortDate(e.air_date, today) : 'sin fecha'}</span>
         </summary>
         <div class="ep-info-body">
-          ${e.still_path ? `<img class="ep-still" src="${escapeHTML(TMDB_IMG + e.still_path)}" alt="" loading="lazy">` : ''}
+          ${e.still_path ? `<img class="ep-still" src="${escapeHTML(TMDB_BACKDROP + e.still_path)}" alt="" loading="lazy">` : ''}
           ${e.runtime ? `<p class="detail-meta">${e.runtime} min</p>` : ''}
           <p class="detail-overview">${epOverview ? escapeHTML(epOverview) : '<em>Sin sinopsis en español.</em>'}</p>
         </div>
