@@ -194,9 +194,11 @@ function fetchMovieDetails(tmdbId) {
 }
 
 // Obtiene los detalles de una temporada concreta para calcular su duración media
-function fetchSeasonDetails(tmdbId, seasonNumber) {
-  return tmdbGet(`/tv/${tmdbId}/season/${seasonNumber}`);
+function fetchSeasonDetails(tmdbId, seasonNumber, params = {}) {
+  return tmdbGet(`/tv/${tmdbId}/season/${seasonNumber}`, params);
 }
+// Para las fichas: la temporada con sus propios vídeos (tráiler de esa temporada)
+const SEASON_WITH_VIDEOS = { append_to_response: 'videos', include_video_language: 'es,en' };
 
 // Calcula la duración media de los episodios de una temporada (en minutos)
 // Devuelve null si no hay datos válidos
@@ -564,7 +566,7 @@ async function openDetailDialog(id) {
     const [details, season] = await Promise.all([
       fetchFullDetails(item.type, item.tmdb_id),
       item.season_number != null
-        ? fetchSeasonDetails(item.tmdb_id, item.season_number).catch(() => null)
+        ? fetchSeasonDetails(item.tmdb_id, item.season_number, SEASON_WITH_VIDEOS).catch(() => null)
         : null,
     ]);
     if (detailItemId !== id) return;  // se cerró o se abrió otro título
@@ -602,7 +604,7 @@ function detailHeaderHTML(item) {
     </div>`;
 }
 
-// withTrailer=false: la ficha de serie seguida pone el tráiler después de las temporadas
+// withTrailer=false: la ficha de serie seguida pone el tráiler dentro de cada temporada
 function detailExtraHTML(item, details, season, withTrailer = true) {
   const parts = [];
 
@@ -635,16 +637,19 @@ function detailExtraHTML(item, details, season, withTrailer = true) {
       <p class="detail-people">${cast.map(c => escapeHTML(c.name)).join(', ')}</p>`);
   }
 
-  if (withTrailer) parts.push(trailerHTML(item.title, details));
+  if (withTrailer) parts.push(trailerHTML(item.title, details, season));
   return parts.join('');
 }
 
-function trailerHTML(title, details) {
-  const trailerKey = findTrailer(details);
+// Si hay temporada y tiene tráiler propio, ese; si no, el de la serie
+function trailerHTML(title, details, season = null) {
+  const seasonKey = season && findTrailer(season);
+  const trailerKey = seasonKey || findTrailer(details);
   if (!trailerKey) return '';
+  const heading = seasonKey ? `Tráiler · Temporada ${season.season_number}` : 'Tráiler';
   // youtube-nocookie: no deja cookies hasta que se da a reproducir.
   // YouTube rechaza embeds sin Referer, de ahí el referrerpolicy.
-  return `<h3 class="dialog-section-title">Tráiler</h3>
+  return `<h3 class="dialog-section-title">${heading}</h3>
     <div class="detail-trailer">
       <iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailerKey)}?rel=0"
         title="Tráiler de ${escapeHTML(title)}" loading="lazy"
@@ -1726,7 +1731,7 @@ const seasonInfoCache = new Map();
 function fetchSeasonInfo(tmdbId, seasonNumber) {
   const key = `${tmdbId}:${seasonNumber}`;
   if (!seasonInfoCache.has(key)) {
-    const p = tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber));
+    const p = tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber, SEASON_WITH_VIDEOS));
     p.catch(() => seasonInfoCache.delete(key));
     seasonInfoCache.set(key, p);
   }
@@ -1786,8 +1791,7 @@ async function renderShowInfo() {
     + (seasons.length ? `
       <h3 class="dialog-section-title">Temporadas</h3>
       <div class="filter-group show-seasons">${seasonChips}</div>
-      <div id="show-info-season"><p class="detail-loading">Cargando capítulos…</p></div>` : '')
-    + trailerHTML(row.title, details);
+      <div id="show-info-season"><p class="detail-loading">Cargando capítulos…</p></div>` : trailerHTML(row.title, details));
   if (showInfoSeason != null) renderShowInfoSeason();
 }
 
@@ -1810,9 +1814,11 @@ function showInfoMeta(details) {
 async function renderShowInfoSeason() {
   const tmdbId = showDialogId;
   const number = showInfoSeason;
-  let season;
+  const title = followedRow(tmdbId)?.title ?? '';
+  let details, season;
   try {
-    season = await fetchSeasonInfo(tmdbId, number);
+    // details ya está en caché: renderShowInfo lo cargó antes de llamar aquí
+    [details, season] = await Promise.all([fetchFullDetails('tv', tmdbId), fetchSeasonInfo(tmdbId, number)]);
   } catch (err) {
     console.error(err);
     season = null;
@@ -1846,7 +1852,8 @@ async function renderShowInfoSeason() {
       </details></li>`;
     }).join('')}</ol>`;
 
-  box.innerHTML = (overview ? `<p class="detail-overview show-season-overview">${escapeHTML(overview)}</p>` : '') + list;
+  box.innerHTML = (overview ? `<p class="detail-overview show-season-overview">${escapeHTML(overview)}</p>` : '') + list
+    + trailerHTML(title, details, season);
 }
 
 // ---- Búsqueda con debounce ----
@@ -2005,7 +2012,11 @@ function setupListeners() {
 
   // Ficha de serie seguida
   els.showClose.addEventListener('click', () => els.showDialog.close());
-  els.showDialog.addEventListener('close', () => { showDialogId = null; });
+  els.showDialog.addEventListener('close', () => {
+    showDialogId = null;
+    // Igual que en la ficha de detalle: el iframe oculto seguiría sonando
+    els.showBody.querySelector('.detail-trailer')?.remove();
+  });
   els.showDialog.addEventListener('click', e => {
     if (e.target === els.showDialog) return els.showDialog.close();
     const tmdbId = showDialogId;
