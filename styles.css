@@ -1141,6 +1141,9 @@ main {
 .detail-genres { text-transform: none; letter-spacing: 0; font-family: inherit; font-size: 12px; }
 #detail-extra { padding: 4px 24px 0; }
 #detail-extra .dialog-section-title { margin-top: 18px; }
+/* En las fichas los títulos separan bloques largos de texto: que se vean */
+#detail-extra .dialog-section-title,
+#show-info-extra .dialog-section-title { color: var(--accent); font-weight: 600; }
 .detail-loading {
   color: var(--text-muted);
   font-style: italic;
