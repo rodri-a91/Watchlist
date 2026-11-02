@@ -237,8 +237,8 @@ main {
   bottom: 6px;
   background: rgba(13, 12, 10, 0.88);
   backdrop-filter: blur(6px);
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  color: #e6b563; /* fijo: va sobre fondo oscuro, también en modo claro */
+  border: 1px solid #e6b563;
   padding: 3px 6px;
   border-radius: 4px;
   font-family: 'Geist Mono', monospace;
@@ -500,7 +500,7 @@ main {
   left: 8px;
   background: rgba(13, 12, 10, 0.85);
   backdrop-filter: blur(6px);
-  color: var(--text);
+  color: #f4ede0; /* fijo: la etiqueta siempre va sobre fondo oscuro, también en modo claro */
   padding: 4px 8px;
   border-radius: 4px;
   font-family: 'Geist Mono', monospace;
