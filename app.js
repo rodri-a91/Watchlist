@@ -1765,7 +1765,10 @@ async function renderShowInfo() {
   const stillCurrent = () => showDialogId === tmdbId && showDialogView === 'info';
 
   els.showBody.innerHTML = `
-    <button type="button" class="dialog-close show-back" data-action="back" aria-label="Volver">←</button>
+    <button type="button" class="dialog-close show-back" data-action="back" aria-label="Volver">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+    </button>
     ${detailHeaderHTML({ ...row, type: 'tv', year: null, genres: [] })}
     <div id="show-info-extra" class="show-pad"><p class="detail-loading">Cargando ficha…</p></div>`;
 

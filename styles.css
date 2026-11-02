@@ -1093,6 +1093,9 @@ main {
   width: 36px;
   height: 36px;
   padding: 0;
+  /* La × es un SVG: se centra exacta, sin depender de la fuente */
+  display: grid;
+  place-items: center;
 }
 /* El fondo (backdrop de TMDB) se pone desde JS cuando llega; el degradado lo funde con el panel */
 .detail-hero {
@@ -1540,7 +1543,9 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
   width: 36px;
   height: 36px;
   padding: 0;
-  font-size: 18px;
+  /* La flecha es un SVG: se centra exacta, sin depender de la fuente */
+  display: grid;
+  place-items: center;
 }
 #show-info-extra { padding-bottom: 24px; }
 .nowrap { white-space: nowrap; }
