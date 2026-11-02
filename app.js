@@ -1550,13 +1550,19 @@ function summaryHTML(entries, today) {
 // Temporada en emisión como cuadrados: dorados los vistos (según "voy por"),
 // en el color de la plataforma los emitidos sin ver y vacíos los que faltan por emitir
 // Qué temporada pintar como cuadrados, o null para dejar solo el texto:
-// en emisión, la temporada en curso; en el resto, la del "voy por"
+// en emisión, la temporada en curso; en el resto, la del "voy por". Si esa ya está
+// terminada, la siguiente cuando ha empezado a emitirse y, si no, ninguna (estás al día)
 // (en estrenos y renovadas el texto se queda encima porque lleva la fecha)
 function barFor(cls, row, show, today) {
   if (cls.state === 'airing') return cls.total ? cls : null;
   if (cls.state === 'unknown' || row.seen_season == null) return null;
-  const season = show.seasons.find(s => s.number === row.seen_season);
+  let season = show.seasons.find(s => s.number === row.seen_season);
   if (!season?.episodeCount) return null;
+  if (row.seen_episode >= season.episodeCount) {
+    const next = show.seasons.find(s => s.number === row.seen_season + 1);
+    if (!next?.episodeCount || airedInSeason(show, next, today) === 0) return null;
+    season = next;
+  }
   return { season: season.number, aired: airedInSeason(show, season, today), total: season.episodeCount };
 }
 
