@@ -279,7 +279,7 @@ export function pendingCount(show, seenSeason, seenEpisode, today) {
   return total;
 }
 
-// "T1 · 5/8 episodios", "T3 · 12 mar", "Renovada, sin fecha", "Finalizada"
+// "T1 · 5/8 episodios", "T3 · 12 mar", "Renovada", "Finalizada"
 export function statusText(cls, today) {
   switch (cls.state) {
     case 'airing': {
@@ -287,7 +287,7 @@ export function statusText(cls, today) {
       return `T${cls.season} · ${cls.aired} ${cls.aired === 1 ? 'episodio' : 'episodios'}`;
     }
     case 'premiere': return `T${cls.season} · ${formatShortDate(cls.airDate, today)}`;
-    case 'waiting':  return 'Renovada, sin fecha';
+    case 'waiting':  return 'Renovada';
     case 'ended':    return 'Finalizada';
     default:         return '';
   }

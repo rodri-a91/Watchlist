@@ -1394,7 +1394,7 @@ const AGENDA_BUCKETS = [
 const SUMMARY_GROUPS = [
   ['airing', 'En emisión'],
   ['premiere', 'Próximos estrenos'],
-  ['waiting', 'Renovadas sin fecha'],
+  ['waiting', 'Renovadas'],
   ['unknown', 'Sin datos de TMDB'],
   ['ended', 'Finalizadas'],
 ];
@@ -1523,10 +1523,13 @@ function summaryHTML(entries, today) {
     .map(([key, label]) => {
       const list = groups.get(key);
       const rows = list.map(({ row, show, cls }) => {
-        const pending = show && pendingText(pendingCount(show, row.seen_season, row.seen_episode, today));
+        const count = show ? pendingCount(show, row.seen_season, row.seen_episode, today) : null;
+        const pending = show && pendingText(count);
         const bar = barFor(cls, row, show, today);
+        // En renovadas y finalizadas, las que estoy al día van difuminadas
+        const upToDate = (key === 'waiting' || key === 'ended') && count === 0;
         return `
-        <button type="button" class="summary-row" data-show="${row.tmdb_id}"
+        <button type="button" class="summary-row ${upToDate ? 'seen' : ''}" data-show="${row.tmdb_id}"
                 style="--platform-color: ${showColor(row)}">
           ${thumbHTML(row)}
           <span class="agenda-main">

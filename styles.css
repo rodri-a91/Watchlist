@@ -1255,8 +1255,10 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
 }
 .agenda-row:hover,
 .summary-row:hover { border-color: var(--border-strong); border-left-color: var(--platform-color, var(--border-strong)); }
-.agenda-row.seen { opacity: 0.6; }
-.agenda-row.seen:hover { opacity: 1; }
+.agenda-row.seen,
+.summary-row.seen { opacity: 0.6; }
+.agenda-row.seen:hover,
+.summary-row.seen:hover { opacity: 1; }
 .upcoming-thumb {
   width: 36px;
   height: 54px;

@@ -186,7 +186,7 @@ test('classifyShow: nueva temporada con fecha', () => {
 test('classifyShow: renovada sin fecha', () => {
   const show = normalizeShow(details({ seasons: [[1, '2024-01-01', 8], [2, null, 0]], last: [1, 8, '2024-02-01'], next: null }));
   assert.deepEqual(classifyShow(show, TODAY), { state: 'waiting' });
-  assert.equal(statusText({ state: 'waiting' }, TODAY), 'Renovada, sin fecha');
+  assert.equal(statusText({ state: 'waiting' }, TODAY), 'Renovada');
 });
 
 test('classifyShow: finalizada', () => {

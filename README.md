@@ -107,7 +107,7 @@ Abre `config.js` y pon tus valores reales. El archivo se sube al repo a propósi
 La pestaña **Próximos** es una lista aparte de series seguidas, con la agenda de capítulos y estrenos sacada de TMDB:
 
 - **Seguir una serie**: con la pestaña Próximos abierta, el buscador solo muestra series y al pulsar una la sigues. También desde la ficha de una serie de tu lista (**+ Seguir en Próximos**).
-- **Agenda**: lanzamientos de los últimos 7 días y los que vienen, agrupados (Hoy, Mañana, Esta semana, Más adelante). Una temporada que sale entera el mismo día (Netflix y similares) aparece como un único bloque. Debajo, un resumen por serie: en emisión, próximos estrenos, renovadas sin fecha y finalizadas.
+- **Agenda**: lanzamientos de los últimos 7 días y los que vienen, agrupados (Hoy, Mañana, Esta semana, Más adelante). Una temporada que sale entera el mismo día (Netflix y similares) aparece como un único bloque. Debajo, un resumen por serie: en emisión, próximos estrenos, renovadas y finalizadas.
 - **Calendario**: vista mensual. En el móvil las celdas solo llevan puntos y, al tocar un día, sus lanzamientos salen debajo.
 - **Voy por**: en la ficha de la serie, pulsa el último capítulo que has visto. La app solo lo usa para decirte si vas al día o cuántos te faltan; no lleva el seguimiento capítulo a capítulo.
 
