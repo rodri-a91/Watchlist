@@ -1508,12 +1508,13 @@ function summaryHTML(entries, today) {
   }
   groups.get('premiere')?.sort((a, b) => a.cls.airDate.localeCompare(b.cls.airDate));
   // Renovadas y finalizadas: primero las que tienen menos capítulos pendientes,
-  // luego las no empezadas (sin "voy por") y al final las que estoy al día
+  // luego las no empezadas (sin "voy por") y al final las que estoy al día, por orden alfabético
   const pendingOf = ({ row, show }) => pendingCount(show, row.seen_season, row.seen_episode, today);
   const tier = n => n == null ? 1 : n === 0 ? 2 : 0;
   const byPending = (a, b) => {
     const pa = pendingOf(a), pb = pendingOf(b);
-    return tier(pa) - tier(pb) || (pa ?? 0) - (pb ?? 0);
+    return tier(pa) - tier(pb) || (pa ?? 0) - (pb ?? 0)
+      || (tier(pa) === 2 ? a.row.title.localeCompare(b.row.title, 'es', { sensitivity: 'base' }) : 0);
   };
   groups.get('waiting')?.sort(byPending);
   groups.get('ended')?.sort(byPending);
