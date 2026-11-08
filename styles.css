@@ -1080,7 +1080,8 @@ main {
   position: relative;
   padding: 0;
   overflow: hidden;
-  max-height: calc(100vh - 48px);
+  /* En modo app del iPhone 100vh incluye la barra de estado: se descuenta para que la hoja (y su ← y ×) quede debajo */
+  max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
 }
 .detail-close {
@@ -1452,7 +1453,8 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
 .show-content {
   position: relative;
   padding: 0;
-  max-height: calc(100vh - 48px);
+  /* En modo app del iPhone 100vh incluye la barra de estado: se descuenta para que la hoja (y su ← y ×) quede debajo */
+  max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
 }
 .show-header {
