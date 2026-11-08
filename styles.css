@@ -1077,7 +1077,8 @@ main {
 }
 .detail-dialog { max-width: 640px; }
 .detail-content {
-  position: relative;
+  /* Sin position: la ← y la × se colocan respecto al <dialog> (fijo), no al contenido que hace scroll,
+     así no se van al bajar */
   padding: 0;
   overflow: hidden;
   /* En modo app del iPhone 100vh incluye la barra de estado: se descuenta para que la hoja (y su ← y ×) quede debajo */
@@ -1451,7 +1452,8 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
 /* Ficha de serie seguida */
 .show-dialog { max-width: 560px; }
 .show-content {
-  position: relative;
+  /* Sin position: la ← y la × se colocan respecto al <dialog> (fijo), no al contenido que hace scroll,
+     así no se van al bajar */
   padding: 0;
   /* En modo app del iPhone 100vh incluye la barra de estado: se descuenta para que la hoja (y su ← y ×) quede debajo */
   max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
