@@ -298,6 +298,7 @@ const els = {
   sortSelect:       $('sort-select'),
   viewButtons:      document.querySelectorAll('.view-btn[data-view]'),
   grid:             $('watchlist-grid'),
+  toast:            $('toast'),
   emptyState:       $('empty-state'),
   loadingState:     $('loading-state'),
   listCount:        $('list-count'),
@@ -1133,6 +1134,44 @@ function clearSearch() {
   lastResults = null;
 }
 
+// ---- Aviso flotante temporal ----
+// action (opcional): { label, onClick } añade un botón, p. ej. "Deshacer"
+let toastTimer = null;
+function showToast(message, { action, duration = 2500 } = {}) {
+  const t = els.toast;
+  const text = document.createElement('span');
+  text.textContent = message;
+  t.replaceChildren(text);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { hideToast(); action.onClick(); }, { once: true });
+    t.append(btn);
+  }
+  // Si ya había uno visible, se sustituye y se reinicia el tiempo
+  clearTimeout(toastTimer);
+  if (t.showPopover && !t.matches(':popover-open')) {
+    t.showPopover();
+    void t.offsetWidth;  // fuerza un reflow para que el fundido de entrada se anime
+  }
+  t.classList.add('visible');
+  toastTimer = setTimeout(hideToast, duration);
+}
+
+function hideToast() {
+  const t = els.toast;
+  clearTimeout(toastTimer);
+  t.classList.remove('visible');
+  // Se quita de la capa superior cuando termina el fundido
+  toastTimer = setTimeout(() => t.hidePopover?.(), 250);
+}
+
+function itemLabel(item) {
+  return item.season_number ? `${item.title} (T${item.season_number})` : item.title;
+}
+
 async function toggleWatched(id) {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
@@ -1143,7 +1182,8 @@ async function toggleWatched(id) {
     .from('watchlist_items')
     .update({ watched: newValue })
     .eq('id', id);
-  if (error) { item.watched = !newValue; renderList(); alert('Error: ' + error.message); }
+  if (error) { item.watched = !newValue; renderList(); alert('Error: ' + error.message); return; }
+  showToast(newValue ? `"${itemLabel(item)}" ha sido vista` : `"${itemLabel(item)}" ya no está vista`);
 }
 
 // Devuelve true si se ha guardado
@@ -1174,17 +1214,39 @@ async function updateItem(id, updates) {
   return true;
 }
 
+// Sin confirm(): se borra al momento y el aviso ofrece "Deshacer" unos segundos
 async function deleteItem(id) {
-  const item = state.items.find(i => i.id === id);
-  if (!item) return;
-  if (!confirm(`¿Eliminar "${item.title}" de la lista?`)) return;
-  state.items = state.items.filter(i => i.id !== id);
+  const index = state.items.findIndex(i => i.id === id);
+  if (index === -1) return;
+  const item = state.items[index];
+  state.items.splice(index, 1);
   onItemsChanged();
   const { error } = await supabase
     .from('watchlist_items')
     .delete()
     .eq('id', id);
-  if (error) { alert('Error: ' + error.message); loadItems(); }
+  if (error) { alert('Error: ' + error.message); loadItems(); return; }
+  showToast(`"${itemLabel(item)}" ha sido eliminada`, {
+    duration: 5000,
+    action: { label: 'Deshacer', onClick: () => restoreItem(item, index) },
+  });
+}
+
+// Vuelve a insertar la fila borrada tal cual (mismo id y added_at), así recupera
+// su posición en la lista
+async function restoreItem(item, index) {
+  state.items.splice(Math.min(index, state.items.length), 0, item);
+  onItemsChanged();
+  const { error } = await supabase
+    .from('watchlist_items')
+    .insert(item);
+  if (error) {
+    state.items = state.items.filter(i => i !== item);
+    onItemsChanged();
+    alert(error.code === '23505' ? `"${itemLabel(item)}" ya está en tu lista.` : 'Error: ' + error.message);
+    return;
+  }
+  showToast(`"${itemLabel(item)}" ha vuelto a tu lista`);
 }
 
 // ==========================================

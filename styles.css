@@ -1657,3 +1657,45 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
   .show-header { padding: 20px 52px 8px 16px; }
   .show-pad { padding: 8px 16px 0; }
 }
+
+/* ---- Aviso flotante temporal (showToast) ---- */
+.toast {
+  /* anula el centrado por defecto de [popover] */
+  inset: auto 0 calc(24px + env(safe-area-inset-bottom));
+  margin: 0 auto;
+  width: fit-content;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+.toast.visible {
+  opacity: 1;
+  transform: none;
+}
+.toast:popover-open:has(.toast-action) {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+}
+.toast.visible:has(.toast-action) { pointer-events: auto; }  /* que el botón se pueda pulsar */
+.toast-action {
+  flex-shrink: 0;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
