@@ -2269,8 +2269,22 @@ function setupTheme() {
   syncThemeUI();
 }
 
+// La × de las fichas va fija respecto al <dialog>, encima del contenido que hace scroll.
+// Con barras de scroll clásicas (escritorio) la taparía: se mide su ancho y se guarda en
+// --scrollbar-w para que el CSS corra la ×. ResizeObserver avisa cuando cambia el ancho
+// útil del contenido, que es justo lo que pasa cuando la barra aparece o desaparece.
+function watchScrollbar(content) {
+  new ResizeObserver(() => {
+    // offsetWidth incluye los bordes (1px a cada lado): se descuentan con clientLeft
+    const w = content.offsetWidth - content.clientWidth - 2 * content.clientLeft;
+    content.style.setProperty('--scrollbar-w', `${w}px`);
+  }).observe(content);
+}
+
 // ---- Arranque ----
 setupTheme();
+watchScrollbar(els.detailDialog.querySelector('.detail-content'));
+watchScrollbar(els.showDialog.querySelector('.show-content'));
 loadPrefs();
 applyPrefsToUI();
 renderPlatformFilters();

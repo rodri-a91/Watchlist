@@ -1088,7 +1088,8 @@ main {
 .detail-close {
   position: absolute;
   top: 10px;
-  right: 10px;
+  /* --scrollbar-w lo pone JS (watchScrollbar): así la × no tapa la barra de scroll del escritorio */
+  right: calc(10px + var(--scrollbar-w, 0px));
   z-index: 1;
   background: var(--close-bg);
   border-radius: 50%;
