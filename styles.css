@@ -1596,6 +1596,7 @@ details.summary-group > summary { cursor: pointer; list-style-position: inside; 
   }
   .site-header { padding: calc(36px + env(safe-area-inset-top)) 16px 28px; }
   .user-bar {
+    position: absolute; /* en móvil no flota: se queda arriba y se va con el scroll */
     top: calc(10px + env(safe-area-inset-top));
     right: calc(12px + env(safe-area-inset-right));
     gap: 8px;
