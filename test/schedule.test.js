@@ -227,5 +227,6 @@ test('pendingCount: la temporada de Netflix futura no cuenta todavía', () => {
 test('pendingText', () => {
   assert.equal(pendingText(null), null);
   assert.equal(pendingText(0), 'Al día');
+  assert.equal(pendingText(1), 'Te falta 1');
   assert.equal(pendingText(4), 'Te faltan 4');
 });

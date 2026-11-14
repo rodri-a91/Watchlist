@@ -297,5 +297,5 @@ export function statusText(cls, today) {
 export function pendingText(n) {
   if (n == null) return null;
   if (n === 0) return 'Al día';
-  return `Te faltan ${n}`;
+  return n === 1 ? 'Te falta 1' : `Te faltan ${n}`;
 }
