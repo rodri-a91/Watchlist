@@ -166,6 +166,9 @@ async function fetchSuggestedPlatforms(type, tmdbId) {
   return PLATFORMS.map(p => p.id).filter(id => ids.has(id));  // en el orden de PLATFORMS
 }
 
+// TMDB no siempre tiene la traducción: lo que falte en español se pide en inglés
+const ENGLISH = { language: 'en-US' };
+
 // Detalles completos para la ficha: sinopsis, reparto, tráiler… (cacheado por título)
 const fullDetailsCache = new Map();
 function fetchFullDetails(type, tmdbId) {
@@ -174,6 +177,13 @@ function fetchFullDetails(type, tmdbId) {
     const p = tmdbGet(`/${type}/${tmdbId}`, {
       append_to_response:     'credits,videos',
       include_video_language: 'es,en',
+    }).then(async details => {
+      // Sin sinopsis en español: se usa la inglesa
+      if (!details.overview?.trim()) {
+        const en = await tmdbGet(`/${type}/${tmdbId}`, ENGLISH).catch(() => null);
+        if (en?.overview?.trim()) details.overview = en.overview;
+      }
+      return details;
     });
     p.catch(() => fullDetailsCache.delete(key));
     fullDetailsCache.set(key, p);
@@ -622,7 +632,7 @@ function detailExtraHTML(item, details, season, withTrailer = true) {
   const overview = seasonOverview || details.overview?.trim();
   parts.push(`
     <h3 class="dialog-section-title">${seasonOverview ? `Sinopsis · Temporada ${item.season_number}` : 'Sinopsis'}</h3>
-    <p class="detail-overview">${overview ? escapeHTML(overview) : '<em>Sin sinopsis en español.</em>'}</p>`);
+    <p class="detail-overview">${overview ? escapeHTML(overview) : '<em>Sin sinopsis.</em>'}</p>`);
 
   const people = item.type === 'movie'
     ? { label: 'Dirección', names: (details.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name) }
@@ -1800,10 +1810,29 @@ function showActionsHTML(row) {
 // ---- Ficha completa de serie seguida (misma hoja, con ← para volver) ----
 // Sinopsis y fotos de los capítulos no van a la caché de localStorage: se piden al abrir
 const seasonInfoCache = new Map();
+// Sin traducción, TMDB llama a los capítulos "Episodio 3" (y en inglés, "Episode 3")
+const isPlaceholderName = (e, word) => !e.name?.trim() || e.name === `${word} ${e.episode_number}`;
+
+// Capítulos sin título o sin sinopsis en español: se rellenan con los ingleses
+async function fillEpisodesInEnglish(tmdbId, seasonNumber, season) {
+  const missing = (season.episodes || []).filter(e => !e.overview?.trim() || isPlaceholderName(e, 'Episodio'));
+  if (missing.length === 0) return season;
+  const en = await tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber, ENGLISH)).catch(() => null);
+  const byNumber = new Map((en?.episodes || []).map(e => [e.episode_number, e]));
+  for (const e of missing) {
+    const enEp = byNumber.get(e.episode_number);
+    if (!enEp) continue;
+    if (!e.overview?.trim() && enEp.overview?.trim()) e.overview = enEp.overview;
+    if (isPlaceholderName(e, 'Episodio') && !isPlaceholderName(enEp, 'Episode')) e.name = enEp.name;
+  }
+  return season;
+}
+
 function fetchSeasonInfo(tmdbId, seasonNumber) {
   const key = `${tmdbId}:${seasonNumber}`;
   if (!seasonInfoCache.has(key)) {
-    const p = tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber, SEASON_WITH_VIDEOS));
+    const p = tmdbLimit(() => fetchSeasonDetails(tmdbId, seasonNumber, SEASON_WITH_VIDEOS))
+      .then(season => fillEpisodesInEnglish(tmdbId, seasonNumber, season));
     p.catch(() => seasonInfoCache.delete(key));
     seasonInfoCache.set(key, p);
   }
@@ -1922,7 +1951,7 @@ async function renderShowInfoSeason() {
         <div class="ep-info-body">
           ${e.still_path ? `<img class="ep-still" src="${escapeHTML(TMDB_BACKDROP + e.still_path)}" alt="" loading="lazy">` : ''}
           ${e.runtime ? `<p class="detail-meta">${e.runtime} min</p>` : ''}
-          <p class="detail-overview">${epOverview ? escapeHTML(epOverview) : '<em>Sin sinopsis en español.</em>'}</p>
+          <p class="detail-overview">${epOverview ? escapeHTML(epOverview) : '<em>Sin sinopsis.</em>'}</p>
         </div>
       </details></li>`;
     }).join('')}</ol>`;
